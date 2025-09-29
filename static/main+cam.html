@@ -395,7 +395,7 @@
     const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.5 });
 
     const loop = async ()=>{
-      fpsTick();
+      fpsTick();hy6
       const dets = await faceapi.detectAllFaces(ui.cam, opts).withAgeAndGender();
       ctx.clearRect(0,0,ui.ovl.width, ui.ovl.height);
       if(dets && dets.length){
