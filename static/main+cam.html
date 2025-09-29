@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>키오스크 미니 프리뷰 (Scaled + Smooth Anchor)</title>
+<style>
+  :root{
+    --uiScale: 0.75;           /* 전체 UI 축소 배율 */
+    --frameW: 950px;           /* 원본 앱 기준 너비 */
+    --frameH: 640px;           /* 원본 앱 기준 높이 */
+    --bg: #0b0b0c; --fg: #f5f5f7; --muted:#9aa0a6; --accent:#2563eb;
+  }
+  html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial, sans-serif; display:flex; flex-direction:column; }
+
+  header{ position:sticky; top:0; z-index:10; padding:10px 14px; background:#121214; border-bottom:1px solid #2a2a2a; display:flex; gap:12px; align-items:center; }
+  header h1{ font-size:1rem; margin:0; }
+  .sp{ flex:1; }
+  .btn{ cursor:pointer; border:1px solid #34363a; background:#1b1d22; color:#e6e6ea; padding:10px 12px; border-radius:10px; font-weight:700; }
+  .btn.primary{ background:var(--accent); color:#fff; border-color: transparent; }
+  input[type="range"]{ width: 200px; }
+
+  /* 미니 프레임 래퍼: 화면 중앙 배치 */
+  .wrap{ min-height: calc(100vh - 56px); display:flex; align-items:flex-start; justify-content:center; padding:16px; position:relative; overflow:hidden; }
+  .anchor-indicator{ position:fixed; left:12px; bottom:12px; color:var(--muted); font-size:.9rem; }
+
+  .frame{ position:relative; width: calc(var(--frameW) * var(--uiScale)); height: calc(var(--frameH) * var(--uiScale)); border-radius:18px; box-shadow: 0 14px 38px rgba(0,0,0,.45), 0 6px 18px rgba(0,0,0,.35); background:#0f0f11; will-change: transform; }
+  .chrome{ position:absolute; inset:0; pointer-events:none; border:1px solid #2a2a2a; border-radius:18px; }
+  .scale-shell{ position:absolute; left:0; top:0; transform-origin: top left; transform: scale(var(--uiScale)); width: calc(var(--frameW)); height: calc(var(--frameH)); overflow:hidden; }
+  .note{ color:var(--muted); font-size:.9rem; }
+
+  /* ===== 원본 키오스크 앱(요약) ===== */
+  .app header{ position:sticky; top:0; background:#fff; color:#111; border-bottom:1px solid #e5e7eb; padding:10px 14px; display:flex; align-items:center; gap:10px; }
+  .app header .title{ font-weight:900; }
+  .app main{ max-width: 980px; margin: 0 auto; padding:14px; font-size:16px; }
+  .app .row{ display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+  .app .sp{ flex:1; }
+  .app .btn{ cursor:pointer; user-select:none; border:none; border-radius:14px; font-weight:800; padding:12px 16px; background:#2563eb; color:#fff; }
+  .app .btn.ghost{ background:#f3f4f6; color:#111; border:1px solid #e5e7eb; }
+  .app .card{ background:#f8fafc; border:1px solid #e5e7eb; border-radius:14px; padding:14px; }
+  .app .grid{ display:grid; gap:12px; }
+  .app .cols-2{ grid-template-columns: 1.2fr .8fr; }
+  .app .items{ display:grid; gap:12px; grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .app .item{ display:flex; align-items:center; justify-content:space-between; gap:10px; background:#fff; color:#111; border:1px solid #e5e7eb; border-radius:14px; padding:14px; min-height:72px; }
+  .app .chip{ border:1px solid #e5e7eb; border-radius:999px; padding:8px 12px; background:#fff; color:#111; font-weight:700; }
+  .app .chip.on{ background:#2563eb; color:#fff; border-color:transparent; }
+  .app .sticky-btm{ position:sticky; bottom:0; background:#fff; border-top:1px solid #e5e7eb; padding:10px 0; }
+
+  @media (max-width: 980px){ :root{ --frameW: 840px; --frameH: 620px; } }
+  @media (max-width: 860px){ :root{ --frameW: 720px; --frameH: 600px; } }
+  @media (max-width: 740px){ :root{ --frameW: 560px; --frameH: 560px; } }
+  @media (max-width: 600px){ :root{ --frameW: 520px; --frameH: 560px; } }
+  /* ===== Webcam age estimator panel ===== */
+  .sensor{ max-width:1000px; margin:12px auto 0; padding:12px; background:#151517; border:1px solid #222; border-radius:12px; }
+  .sensor .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .sensor .muted{ color:#9aa0a6; font-size:.92rem; }
+  .camgrid{ display:grid; gap:10px; grid-template-columns: 1.2fr .8fr; }
+  @media (max-width: 1000px){ .camgrid{ grid-template-columns:1fr; } }
+  #stageCam{ position:relative; }
+  #cam, #ovl{ width:100%; background:#000; border-radius:10px; display:block; }
+  #ovl{ position:absolute; inset:0; pointer-events:none; }
+  .badge{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#111; border:1px solid #333; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>키오스크 미니 프리뷰</h1>
+    <div class="sp"></div>
+    <label>배율 <input id="scale" type="range" min="0.50" max="1.25" step="0.01" value="0.75" /></label>
+    <button class="btn" data-z="0.50">50%</button>
+    <button class="btn" data-z="0.75">75%</button>
+    <button class="btn" data-z="1.00">100%</button>
+    <button class="btn" data-z="1.10">110%</button>
+    <div class="sp"></div>
+    <button class="btn" id="anchorTop">위로</button>
+    <button class="btn" id="anchorMid">가운데</button>
+    <button class="btn" id="anchorBot">아래로</button>
+    <button class="btn primary" id="anchorAuto">자동</button>
+  </header>
+
+  <!-- ===== CNN 나이 추정 데모(통합) ===== -->
+  <section class="sensor" id="ageDemo">
+    <div class="row" style="justify-content:space-between;">
+      <strong>카메라 기반 연령·성별 추정(온디바이스)</strong>
+      <div class="row">
+        <button class="btn" id="btnStart">동의하고 시작</button>
+        <button class="btn" id="btnStop" disabled>중지</button>
+      </div>
+    </div>
+    <div class="camgrid" style="margin-top:8px;">
+      <div id="stageCam">
+        <video id="cam" playsinline muted></video>
+        <canvas id="ovl"></canvas>
+      </div>
+      <div>
+        <div class="row" style="margin-bottom:8px;">
+          <span class="badge"><strong>모델</strong>: <span id="modelInfo" class="muted">로딩 전</span></span>
+          <span class="badge"><strong>백엔드</strong>: <span id="backendInfo" class="muted">-</span></span>
+          <span class="badge"><strong>FPS</strong>: <span id="fpsInfo" class="muted">-</span></span>
+        </div>
+        <div style="display:grid; grid-template-columns:140px 1fr; gap:6px;">
+          <div class="muted">안정화 나이</div><div id="ageVal" style="font-weight:800; font-size:1.6rem;">—</div>
+          <div class="muted">추정 성별</div><div id="genderVal">—</div>
+          <div class="muted">연령대 버킷</div><div id="bucketVal">—</div>
+          <div class="muted">신뢰도(EMA)</div><div id="confVal">—</div>
+        </div>
+        <p class="muted" style="margin:.6rem 0 0;">※ HTTPS·카메라 권한 필요. 추정값은 이 페이지의 미니 키오스크에 즉시 반영됩니다.</p>
+      </div>
+    </div>
+  </section>
+
+<div class="wrap">
+    <div class="anchor-indicator" id="anchorInfo">ANCHOR: middle</div>
+    <div class="frame" id="frame">
+      <div class="scale-shell">
+        <!-- ===== 원본 키오스크 앱 시작 ===== -->
+        <div id="appRoot" class="app">
+          <header>
+            <div class="title">적응형 키오스크 (원본 축소 프리뷰)</div>
+            <div class="sp"></div>
+            <button class="btn ghost" id="aMinus">A−</button>
+            <button class="btn ghost" id="aPlus">A＋</button>
+          </header>
+
+          <main class="grid cols-2">
+            <section class="card" aria-labelledby="sec-menu">
+              <h2 id="sec-menu">메뉴 선택</h2>
+              <div class="row" id="catTabs"></div>
+              <div class="items" id="itemGrid"></div>
+              <div class="sticky-btm row">
+                <button class="btn ghost" id="btnCancel">취소</button>
+                <div class="sp"></div>
+                <button class="btn" id="btnNext" disabled>다음</button>
+              </div>
+            </section>
+
+            <aside class="card" aria-labelledby="sec-cart">
+              <h2 id="sec-cart">장바구니</h2>
+              <div id="cartList" class="grid" style="gap:8px;"></div>
+              <hr />
+              <div class="row" style="justify-content:space-between;">
+                <div class="note">합계</div>
+                <strong id="cartTotal">₩0</strong>
+              </div>
+              <div class="row" style="justify-content:flex-end; margin-top:8px;">
+                <button class="btn ghost" id="btnClear">비우기</button>
+              </div>
+            </aside>
+
+            <dialog id="optModal">
+              <div class="card">
+                <h3 id="optTitle">옵션 선택</h3>
+                <div class="row" id="optSize"></div>
+                <div class="row" id="optSweet"></div>
+                <div class="row" id="optIce"></div>
+                <div class="row" style="justify-content:flex-end; margin-top:10px;">
+                  <button class="btn ghost" id="optClose">취소</button>
+                  <button class="btn" id="optOk">담기</button>
+                </div>
+              </div>
+            </dialog>
+
+            <section class="card" id="sectionConfirm" style="display:none;" aria-labelledby="sec-check">
+              <h2 id="sec-check">주문 확인</h2>
+              <div id="confirmList" class="grid"></div>
+              <div class="row" style="justify-content: space-between;">
+                <div class="note">합계</div>
+                <strong id="confirmTotal">₩0</strong>
+              </div>
+              <div class="row" style="justify-content:flex-end; margin-top:8px;">
+                <button class="btn ghost" id="btnBackToMenu">메뉴로</button>
+                <button class="btn" id="btnPay">결제하기</button>
+              </div>
+            </section>
+
+            <section class="card" id="sectionPaid" style="display:none;" aria-labelledby="sec-paid">
+              <h2 id="sec-paid">결제가 완료되었습니다</h2>
+              <p class="note">주문 번호: <span id="orderNo"></span></p>
+              <div class="row"><button class="btn" id="btnNew">새 주문</button></div>
+            </section>
+          </main>
+        </div>
+        <!-- ===== 원본 앱 끝 ===== -->
+      </div>
+      <div class="chrome"></div>
+    </div>
+  </div>
+
+  <!-- FaceAPI (TF.js) for on-device age/gender estimation -->
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
+
+<script>
+(function(){
+  /* ===== Vertical anchor: smooth translateY with auto mode ===== */
+  const headerH = 56; // px
+  const st = { anchor:'middle', auto:true, ySmoothed:null, target:0, cur:0, lastSwitch:0 };
+  const $frame = document.getElementById('frame');
+  const $info = document.getElementById('anchorInfo');
+
+  function metrics(){
+    const vh = window.innerHeight;
+    const wrapPad = 32; // wrap 상하 padding 합(대략)
+    const avail = Math.max(0, vh - headerH - wrapPad - $frame.offsetHeight);
+    return { top:0, mid:avail/2, bot:avail };
+  }
+  function setAnchor(pos){ st.anchor = pos; st.auto=false; updateTarget(); updateIndicator();
+
+  // (A) 통합: ageUpdate를 postMessage가 아닌 내부 함수로도 수신 가능하게 노출
+  window.applyAgeUpdate = function({bucket, conf, faceY}){
+    if(typeof faceY === 'number') uiAnchor.auto(Math.max(0, Math.min(1, faceY)));
+    if(typeof conf === 'number' && conf >= 0.6 && typeof bucket === 'string'){
+      const map = { '65+': 0.85, '40–64': 0.90, '≤39': 1.00 };
+      const v = map[bucket] ?? 1.00;
+      document.getElementById('scale').value = String(v);
+      document.documentElement.style.setProperty('--uiScale', String(v));
+      setTimeout(()=> window.dispatchEvent(new Event('resize')), 0);
+    }
+  };
+
+  // (B) 호환: 외부 창에서 보낼 수도 있으므로 여전히 postMessage도 수신
+  window.addEventListener('message', (e)=>{
+    const d = e?.data || {}; if(d.type !== 'ageUpdate') return; window.applyAgeUpdate(d);
+  });
+
+  // ===== Cross-page integration: receive age/faceY from an external detector via postMessage
+  // Expected payload: { type:'ageUpdate', bucket:'≤39'|'40–64'|'65+', conf:number(0..1), faceY:number(0..1) }
+  window.addEventListener('message', (e)=>{
+    const d = e?.data || {};
+    if(d.type !== 'ageUpdate') return;
+    if(typeof d.faceY === 'number') uiAnchor.auto(Math.max(0, Math.min(1, d.faceY)));
+    if(typeof d.conf === 'number' && d.conf >= 0.6 && typeof d.bucket === 'string'){
+      // Optional: tweak preview scale subtly to visualize personalization effect
+      // (실서비스에선 폰트/버튼 스케일, 대비, 단계수 등을 조절하세요)
+      const map = { '65+': 0.85, '40–64': 0.90, '≤39': 1.00 };
+      const v = map[d.bucket] ?? 1.00;
+      document.getElementById('scale').value = String(v);
+      document.documentElement.style.setProperty('--uiScale', String(v));
+      setTimeout(()=> window.dispatchEvent(new Event('resize')), 0);
+    }
+  }); }
+  function setAuto(on=true){ st.auto = on; updateIndicator(); }
+  function updateIndicator(){ $info.textContent = `ANCHOR: ${st.auto? 'auto→':''}${st.anchor}`; }
+  function updateTarget(){ const m=metrics(); st.target = (st.anchor==='top')? m.top : (st.anchor==='bottom'? m.bot : m.mid); }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function animate(){ st.cur = lerp(st.cur, st.target, 0.12); $frame.style.transform = `translateY(${st.cur}px)`; requestAnimationFrame(animate); }
+  requestAnimationFrame(animate);
+  window.addEventListener('resize', ()=> updateTarget());
+
+  function decideAnchorFromY(y){
+    const now = performance.now();
+    st.ySmoothed = (st.ySmoothed==null)? y : (st.ySmoothed*0.85 + y*0.15);
+    const yS = st.ySmoothed; let next = st.anchor;
+    if(st.anchor==='top'){ if(yS>0.45) next='middle'; }
+    else if(st.anchor==='middle'){ if(yS<0.30) next='top'; else if(yS>0.70) next='bottom'; }
+    else if(st.anchor==='bottom'){ if(yS<0.55) next='middle'; }
+    if(next!==st.anchor && (now - st.lastSwitch) > 800){ st.anchor=next; st.lastSwitch=now; updateTarget(); updateIndicator(); }
+  }
+
+  // Public API
+  window.uiAnchor = {
+    set(pos){ setAnchor(pos); },
+    auto(y){ setAuto(true); if(typeof y==='number') decideAnchorFromY(Math.min(1, Math.max(0, y))); },
+    enableAuto(){ setAuto(true); },
+    disableAuto(){ setAuto(false); },
+    get current(){ return st.anchor; }
+  };
+
+  // Header controls
+  document.getElementById('anchorTop').onclick = ()=> setAnchor('top');
+  document.getElementById('anchorMid').onclick = ()=> setAnchor('middle');
+  document.getElementById('anchorBot').onclick = ()=> setAnchor('bottom');
+  document.getElementById('anchorAuto').onclick = ()=> setAuto(true);
+
+  // Scale control
+  const range = document.getElementById('scale');
+  function setScale(v){ document.documentElement.style.setProperty('--uiScale', String(v)); setTimeout(()=> window.dispatchEvent(new Event('resize')), 0); }
+  range.addEventListener('input', e=> setScale(e.target.value));
+  document.querySelectorAll('button[data-z]').forEach(b=> b.addEventListener('click', ()=>{ const v=b.dataset.z; range.value=v; setScale(v); }));
+
+  updateTarget(); updateIndicator();
+
+  /* ===== 원본 앱 데이터 로직(간단) ===== */
+  const PRODUCTS = [
+    { id:'a1', cat:'커피',   name:'아메리카노', price:2500 },
+    { id:'a2', cat:'커피',   name:'카페라테',   price:3200 },
+    { id:'a3', cat:'커피',   name:'바닐라라테', price:3600 },
+    { id:'t1', cat:'티',     name:'녹차',       price:2800 },
+    { id:'t2', cat:'티',     name:'얼그레이',   price:3000 },
+    { id:'c1', cat:'초콜릿', name:'핫초코',     price:3000 },
+    { id:'s1', cat:'스낵',   name:'쿠키',       price:1800 },
+    { id:'s2', cat:'스낵',   name:'머핀',       price:2200 }
+  ];
+  const CATS = [...new Set(PRODUCTS.map(p=>p.cat))];
+  const OPTION_PRESET = {
+    size: [ ['S','소'], ['M','중'], ['L','대'] ],
+    sweet: [ ['0','무가당'], ['50','50%'], ['100','100%'] ],
+    ice: [ ['less','적게'], ['normal','보통'], ['more','많이'] ]
+  };
+  const state = { cart:[], cat:CATS[0] };
+  const $ = s=>document.querySelector(s);
+  const $$ = s=>Array.from(document.querySelectorAll(s));
+  const fmt = v=> v.toLocaleString('ko-KR');
+
+  function renderCats(){
+    const wrap = $('#catTabs'); wrap.innerHTML='';
+    CATS.forEach(cat=>{
+      const b = document.createElement('button'); b.className='chip'+(state.cat===cat?' on':''); b.textContent=cat;
+      b.addEventListener('click', ()=>{ state.cat=cat; renderCats(); renderItems(); });
+      wrap.appendChild(b);
+    });
+  }
+  function renderItems(){
+    const grid=$('#itemGrid'); grid.innerHTML='';
+    PRODUCTS.filter(p=>p.cat===state.cat).forEach(p=>{
+      const btn=document.createElement('button'); btn.className='item';
+      btn.innerHTML=`<div><div style="font-weight:800">${p.name}</div><div class="note">${p.cat}</div></div><div><strong>₩${fmt(p.price)}</strong></div>`;
+      btn.addEventListener('click', ()=> openOption(p));
+      grid.appendChild(btn);
+    });
+  }
+  function openOption(prod){
+    const m=$('#optModal'); $('#optTitle').textContent=`[${prod.name}] 옵션`;
+    fill('#optSize','size','M'); fill('#optSweet','sweet','50'); fill('#optIce','ice','normal');
+    function fill(sel,key,def){
+      const row=$(sel); row.innerHTML='';
+      for(const [val,label] of OPTION_PRESET[key]){
+        const b=document.createElement('button'); b.className='chip'; b.textContent=label; b.dataset.group=key; b.dataset.val=val; if(val===def) b.classList.add('on');
+        b.addEventListener('click',()=>{ $$(`button.chip[data-group="${key}"]`).forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+        row.appendChild(b);
+      }
+    }
+    $('#optClose').onclick=()=>m.close();
+    $('#optOk').onclick=()=>{ const sel=g=> $(`button.chip[data-group="${g}"][class*="on"]`)?.dataset.val; addToCart({ id:prod.id,name:prod.name,price:prod.price,size:sel('size'),sweet:sel('sweet'),ice:sel('ice'),qty:1 }); m.close(); };
+    m.showModal();
+  }
+  function addToCart(item){ const key=`${item.id}-${item.size}-${item.sweet}-${item.ice}`; const f=state.cart.find(it=>`${it.id}-${it.size}-${it.sweet}-${it.ice}`===key); if(f) f.qty+=1; else state.cart.push(item); renderCart(); $('#btnNext').disabled = state.cart.length===0; }
+  function renderCart(){ const box=$('#cartList'); box.innerHTML=''; let total=0; state.cart.forEach((it)=>{ const sub=it.price*it.qty; total+=sub; const line=document.createElement('div'); line.className='row'; line.style.justifyContent='space-between'; line.innerHTML=`<div><strong>${it.name}</strong> <span class='note'>(${it.size}/${it.sweet}/${it.ice})×${it.qty}</span></div><div><strong>₩${fmt(sub)}</strong></div>`; box.appendChild(line); }); $('#cartTotal').textContent=`₩${fmt(total)}`; }
+  function showConfirm(){ const list=$('#confirmList'); list.innerHTML=''; let total=0; state.cart.forEach(it=>{ const sub=it.price*it.qty; total+=sub; const row=document.createElement('div'); row.className='row'; row.style.justifyContent='space-between'; row.innerHTML=`<div>${it.name} <span class='note'>(${it.size}/${it.sweet}/${it.ice}) × ${it.qty}</span></div><div><strong>₩${fmt(sub)}</strong></div>`; list.appendChild(row); }); $('#confirmTotal').textContent=`₩${fmt(total)}`; document.querySelector('section[aria-labelledby="sec-menu"]').style.display='none'; $('#sectionConfirm').style.display='block'; }
+  function showPaid(){ $('#sectionConfirm').style.display='none'; $('#sectionPaid').style.display='block'; $('#orderNo').textContent=(Date.now()%1000000).toString().padStart(6,'0'); }
+
+  // 버튼 핸들러
+  document.getElementById('btnCancel').addEventListener('click', ()=>{ if(confirm('주문을 취소할까요?')) location.reload(); });
+  document.getElementById('btnClear').addEventListener('click', ()=>{ state.cart=[]; renderCart(); document.getElementById('btnNext').disabled=true; });
+  document.getElementById('btnNext').addEventListener('click', showConfirm);
+  document.getElementById('btnBackToMenu').addEventListener('click', ()=>{ document.getElementById('sectionConfirm').style.display='none'; document.querySelector('section[aria-labelledby="sec-menu"]').style.display='block'; });
+  document.getElementById('btnPay').addEventListener('click', showPaid);
+  document.getElementById('btnNew').addEventListener('click', ()=> location.reload());
+
+  // 초기 렌더
+  renderCats(); renderItems(); renderCart();
+})();
+</script>
+
+<!-- ===== CNN 나이 추정 루프(통합) ===== -->
+<script>
+(function(){
+  const ui = {
+    modelInfo: document.getElementById('modelInfo'),
+    backendInfo: document.getElementById('backendInfo'),
+    fpsInfo: document.getElementById('fpsInfo'),
+    ageVal: document.getElementById('ageVal'),
+    genderVal: document.getElementById('genderVal'),
+    bucketVal: document.getElementById('bucketVal'),
+    confVal: document.getElementById('confVal'),
+    btnStart: document.getElementById('btnStart'),
+    btnStop: document.getElementById('btnStop'),
+    cam: document.getElementById('cam'),
+    ovl: document.getElementById('ovl'),
+  };
+  const ctx = ui.ovl.getContext('2d');
+  let loopId = null, stream = null; let buf=[]; let lastTs=performance.now(), fpsEMA=0;
+
+  function fpsTick(){ const now=performance.now(); const dt=now-lastTs; lastTs=now; const fps=1000/Math.max(dt,1); fpsEMA=fpsEMA?fpsEMA*0.9+fps*0.1:fps; ui.fpsInfo.textContent=fpsEMA.toFixed(1); }
+  const mean = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  function smoothAge(raw){ if(!isFinite(raw)) return null; buf.push(raw); if(buf.length>15) buf.shift(); const recent=buf.slice(-7).sort((a,b)=>a-b); const med=recent[Math.floor(recent.length/2)]; return med*0.7 + mean(buf)*0.3; }
+  function toBucket(age){ if(age==null) return '—'; if(age>=65) return '65+'; if(age>=40) return '40–64'; return '≤39'; }
+
+  async function loadModels(){
+    ui.modelInfo.textContent='모델 로딩 중…';
+    await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model');
+    await faceapi.nets.ageGenderNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model');
+    ui.modelInfo.textContent='tinyFaceDetector + ageGenderNet';
+    ui.backendInfo.textContent = faceapi.tf?.engine()?.backendName || 'tfjs';
+  }
+
+  async function start(){
+    ui.btnStart.disabled=true; ui.btnStop.disabled=false;
+    await loadModels();
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user', width:{ideal:1280}, height:{ideal:720} }, audio:false });
+    }catch(e){ alert('카메라 권한을 허용해 주세요.'); ui.btnStart.disabled=false; ui.btnStop.disabled=true; return; }
+    ui.cam.srcObject = stream; await ui.cam.play();
+    ui.ovl.width = ui.cam.videoWidth || ui.cam.clientWidth; ui.ovl.height = ui.cam.videoHeight || ui.cam.clientHeight;
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.5 });
+
+    const loop = async ()=>{
+      fpsTick();
+      const dets = await faceapi.detectAllFaces(ui.cam, opts).withAgeAndGender();
+      ctx.clearRect(0,0,ui.ovl.width, ui.ovl.height);
+      if(dets && dets.length){
+        dets.sort((a,b)=> (b.detection.box.width*b.detection.box.height) - (a.detection.box.width*a.detection.box.height));
+        const best = dets[0];
+        const { age, gender, genderProbability, detection } = best;
+        faceapi.draw.drawDetections(ui.ovl, [detection]);
+        const ageS = smoothAge(age); const bucket = toBucket(ageS);
+        ui.ageVal.textContent = ageS? `${ageS.toFixed(1)} 세` : '—';
+        ui.genderVal.textContent = `${gender} (${(genderProbability*100).toFixed(0)}%)`;
+        ui.bucketVal.textContent = bucket;
+        const conf = Math.min(1, (best.detection.score||0)*0.7 + Math.min(buf.length/15,1)*0.3);
+        ui.confVal.textContent = `${Math.round(conf*100)}%`;
+        const yCenter = (detection.box.y + detection.box.height/2) / ui.ovl.height;
+        // 통합 훅 호출: 키오스크 이동/배율 조정
+        window.applyAgeUpdate({ bucket, conf, faceY: yCenter });
+      } else {
+        ui.ageVal.textContent='—'; ui.genderVal.textContent='—'; ui.bucketVal.textContent='—'; ui.confVal.textContent='—';
+      }
+      loopId = requestAnimationFrame(loop);
+    };
+    loopId = requestAnimationFrame(loop);
+  }
+
+  function stop(){ if(loopId){ cancelAnimationFrame(loopId); loopId=null; } if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } ui.btnStart.disabled=false; ui.btnStop.disabled=true; ctx.clearRect(0,0,ui.ovl.width, ui.ovl.height); }
+
+  ui.btnStart.addEventListener('click', start);
+  ui.btnStop.addEventListener('click', stop);
+})();
+</script>
+</body>
+</html>
+</html>
