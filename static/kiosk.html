@@ -56,8 +56,44 @@
   .wrap{ min-height: calc(100vh - 56px); display:flex; flex-direction: column; align-items:center; justify-content:center; padding:16px; }
   .frame{ position:relative; width: calc(var(--frameW) * var(--uiScale)); height: calc(var(--frameH) * var(--uiScale)); border-radius:18px; box-shadow: 0 14px 38px rgba(0,0,0,.45), 0 6px 18px rgba(0,0,0,.35); background:#0f0f11; will-change: transform; }
   .anchor-indicator{ pointer-events:none; position:fixed; left:12px; bottom:12px; color:var(--muted); font-size:.9rem; }
+  /* ===== 연령별 모드 스타일 ===== */
+  /* 공통: body에 age-* 클래스를 붙이면 전체 UI에 적용됩니다 */
+  body.age-child{ --accent: #ff6b6b; font-size:18px; }
+  body.age-teen{ --accent: #7c3aed; font-size:15px; }
+  body.age-adult{ --accent: #2563eb; font-size:16px; }
+  body.age-senior{ --accent: #0b6623; font-size:20px; }
+
+  /* 어린이: 화려하고 큼직한 버튼 */
+  body.age-child .app .item{ background: linear-gradient(135deg,#fff8f0,#fff1f3); border-color: #ffd6d6; font-size:1.15rem; padding:18px; border-radius:16px; }
+  body.age-child .app .btn{ border-radius:18px; padding:14px 18px; font-size:1.05rem; background:var(--accent); }
+
+  /* 청소년: 모던한 컬러, 약간 더 촘촘한 레이아웃 */
+  body.age-teen .app .item{ font-size:1.05rem; }
+  body.age-teen .app .btn{ padding:12px 16px; }
+
+  /* 노인: 고대비, 큰 글자, 큰 버튼 */
+  body.age-senior{ background: #080808; }
+  body.age-senior .app .card{ background:#fff; color:#000; border-color:#bbb; }
+  body.age-senior .app header, body.age-senior .app .item, body.age-senior .app .btn{ font-size:1.25rem; }
+  body.age-senior .app .btn{ padding:16px 20px; border-radius:16px; }
+
+  /* 연령 선택 모달 */
+  .age-modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,0.6); z-index:1000; }
+  .age-modal[aria-hidden="true"]{ display:none; }
+  .age-card{ width:320px; max-width:94%; padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.6); }
+  .age-card .chip{ padding:10px 12px; border-radius:12px; font-weight:800; }
+  @media (min-width:900px){ .age-card{ width:420px; } }
+
+  /* 카메라 오버레이 */
+  .cam-overlay{ position:fixed; right:12px; top:80px; width:240px; background:rgba(0,0,0,0.6); border-radius:12px; padding:8px; z-index:1200; display:flex; flex-direction:column; gap:8px; }
+  .cam-overlay video{ width:100%; height:auto; border-radius:8px; background:#000; }
+  .cam-overlay canvas{ display:none; }
+  .cam-overlay .note{ color:#ddd; font-size:.85rem; }
+  .cam-hidden{ display:none !important; }
 </style>
 </head>
+<!-- face-api.js (브라우저에서 모델 기반 추정을 하려면 필요) -->
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <body>
   <header>
     <h1>키오스크 미니 프리뷰</h1>
@@ -72,11 +108,45 @@
     <button class="btn" id="anchorMid" title="가운데">가운데</button>
     <button class="btn" id="anchorBot" title="아래로">아래로</button>
     <button class="btn primary" id="anchorAuto" title="자동">자동</button>
+  <button class="btn" id="changeAgeBtn" title="연령 변경">연령</button>
     <button class="btn" data-z="0.50">50%</button>
+  <button class="btn" id="autoAgeCamBtn" title="카메라 자동연령">카메라 자동연령</button>
     <button class="btn" data-z="0.75">75%</button>
     <button class="btn" data-z="1.00">100%</button>
     <button class="btn" data-z="1.10">110%</button>
   </header>
+
+  <!-- 연령 선택/변경 모달 -->
+  <div id="ageModal" class="age-modal" aria-hidden="true">
+    <div class="age-card card" role="dialog" aria-labelledby="ageTitle">
+      <h3 id="ageTitle" style="margin:0 0 8px 0;">연령대 선택</h3>
+      <p class="note" style="margin:0 0 12px 0;">생년을 입력하거나 아래 버튼으로 빠르게 선택하세요.</p>
+      <div class="row" style="gap:8px; align-items:center;">
+        <input id="birthYear" type="number" min="1900" max="2025" placeholder="예: 1990" style="flex:1; padding:10px; font-size:1rem;" />
+        <button class="btn" id="ageApply">적용</button>
+      </div>
+      <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="chip" data-age="child">어린이</button>
+        <button class="chip" data-age="teen">청소년</button>
+        <button class="chip" data-age="adult">성인</button>
+        <button class="chip" data-age="senior">노인</button>
+      </div>
+      <div style="margin-top:12px; text-align:right;">
+        <button class="btn ghost" id="ageSkip">건너뛰기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 카메라 오버레이 (토글) -->
+  <div id="camOverlay" class="cam-overlay cam-hidden" aria-hidden="true">
+    <video id="camVideo" autoplay muted playsinline></video>
+    <canvas id="camCanvas" width="320" height="240"></canvas>
+    <div class="note" id="camStatus">카메라: 비활성</div>
+    <div style="display:flex; gap:8px; justify-content:space-between;">
+      <button class="btn ghost" id="camStop">중지</button>
+      <button class="btn" id="camPause">일시정지</button>
+    </div>
+  </div>
 
   <div class="wrap">
     <div class="anchor-indicator" id="anchorInfo">ANCHOR: middle</div>
@@ -160,6 +230,14 @@
 
 <script>
 (function(){
+  /* -- face-api.js 로딩 (선택) --
+     이 프로젝트는 기본적으로 로컬에서 처리합니다. 실제 연령 추정을 사용하려면
+     1) face-api 스크립트를 불러옵니다 (아래 주석을 해제하거나 CDN을 추가)
+     2) 모델(weights)를 호스팅하고 MODEL_URL를 해당 경로로 설정하세요.
+     모델 파일은 face-api의 age/gender 모델을 포함해야 합니다.
+  */
+  // 예: <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js">  (닫는 태그는 실제 HTML에 추가하세요)
+
   /* ==== Vertical anchor state & animation ==== */
   const headerH = 56; // px (matches sticky header)
   const st = { anchor: 'middle', auto:true, ySmoothed: null, target: 0, cur: 0, lastSwitch: 0 };
@@ -303,6 +381,142 @@
   $('#btnNew').addEventListener('click', ()=> location.reload());
 
   renderCats(); renderItems(); renderCart();
+
+  /* ===== 연령 기반 적응 UI 로직 ===== */
+  const AGE_KEY = 'kioskAgeGroup';
+  const YEAR_KEY = 'kioskBirthYear';
+  const $ageModal = document.getElementById('ageModal');
+  const $birth = document.getElementById('birthYear');
+  const $ageApply = document.getElementById('ageApply');
+  const $ageSkip = document.getElementById('ageSkip');
+  const $changeAgeBtn = document.getElementById('changeAgeBtn');
+
+  function computeAgeGroupFromYear(y){
+    const year = Number(y);
+    if(!year || isNaN(year) || year < 1900 || year > (new Date().getFullYear()+1)) return 'adult';
+    const age = new Date().getFullYear() - year;
+    if(age <= 12) return 'child';
+    if(age <= 17) return 'teen';
+    if(age <= 64) return 'adult';
+    return 'senior';
+  }
+
+  function applyAgeGroup(group){
+    const body = document.body;
+    ['age-child','age-teen','age-adult','age-senior'].forEach(c=> body.classList.remove(c));
+    body.classList.add(`age-${group}`);
+    try{ localStorage.setItem(AGE_KEY, group); }catch(e){}
+    // highlight chips inside modal if present
+    $ageModal.querySelectorAll('button.chip').forEach(b=> b.classList.toggle('on', b.dataset.age===group));
+  }
+
+  function openAgeModal(){ $ageModal.setAttribute('aria-hidden','false'); $birth.focus(); }
+  function closeAgeModal(){ $ageModal.setAttribute('aria-hidden','true'); }
+
+  // wire chips
+  $ageModal.querySelectorAll('button.chip').forEach(b=> b.addEventListener('click', ()=>{ const g=b.dataset.age; applyAgeGroup(g); try{ localStorage.setItem(AGE_KEY,g); localStorage.removeItem(YEAR_KEY); }catch(e){}; closeAgeModal(); }));
+
+  // apply from birth year
+  $ageApply.addEventListener('click', ()=>{
+    const v = $birth.value.trim();
+    const g = computeAgeGroupFromYear(v);
+    applyAgeGroup(g);
+    try{ localStorage.setItem(AGE_KEY,g); if(v) localStorage.setItem(YEAR_KEY, v); }catch(e){}
+    closeAgeModal();
+  });
+
+  $ageSkip.addEventListener('click', ()=>{ applyAgeGroup('adult'); closeAgeModal(); });
+  $changeAgeBtn && $changeAgeBtn.addEventListener('click', ()=>{ openAgeModal(); });
+
+  // restore saved group/year or prompt
+  (function restoreAge(){
+    try{
+      const saved = localStorage.getItem(AGE_KEY);
+      const byear = localStorage.getItem(YEAR_KEY);
+      if(saved){ applyAgeGroup(saved); }
+      else if(byear){ applyAgeGroup(computeAgeGroupFromYear(byear)); }
+      else { openAgeModal(); }
+    }catch(e){ openAgeModal(); }
+  })();
+
+  /* ===== 카메라 기반 자동 연령 추적 (로컬, 개인정보 주의) ===== */
+  const AUTO_AGE_KEY = 'kioskAutoAgeEnabled';
+  const MODEL_URLS = [
+    './models',
+    'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'
+  ];
+  const $autoBtn = document.getElementById('autoAgeCamBtn');
+  const $camOverlay = document.getElementById('camOverlay');
+  const $camVideo = document.getElementById('camVideo');
+  const $camCanvas = document.getElementById('camCanvas');
+  const $camStatus = document.getElementById('camStatus');
+  const $camStop = document.getElementById('camStop');
+  const $camPause = document.getElementById('camPause');
+  let camStream = null; let camPaused = false; let detectorEnabled = false; let faceapiAvailable = (window.faceapi!==undefined);
+  let modelLoaded = false; let modelBase = null;
+
+  function setCamStatus(text){ $camStatus.textContent = '카메라: '+text; }
+
+  async function tryLoadModels(){
+    if(!window.faceapi) return false;
+    for(const base of MODEL_URLS){
+      try{
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(base),
+          faceapi.nets.ageGenderNet.loadFromUri(base)
+        ]);
+        modelLoaded = true; modelBase = base; console.info('face-api models loaded from', base); return true;
+      }catch(e){ console.warn('model load failed from', base, e); }
+    }
+    return false;
+  }
+
+  async function startCamera(){
+    if(camStream) return;
+    try{
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio:false });
+      $camVideo.srcObject = camStream; $camOverlay.classList.remove('cam-hidden'); $camOverlay.setAttribute('aria-hidden','false'); setCamStatus('실행 중');
+      // try to load face-api models if available
+      if(faceapiAvailable && !modelLoaded){ await tryLoadModels(); }
+      detectorEnabled = true; runDetectionLoop();
+    }catch(err){ console.error('카메라 시작 실패', err); setCamStatus('권한 없음 또는 오류'); detectorEnabled=false; }
+  }
+
+  function stopCamera(){ if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; } $camOverlay.classList.add('cam-hidden'); $camOverlay.setAttribute('aria-hidden','true'); setCamStatus('비활성'); detectorEnabled=false; }
+
+  $autoBtn && $autoBtn.addEventListener('click', async ()=>{ const enabled = localStorage.getItem(AUTO_AGE_KEY)==='1'; if(enabled){ localStorage.removeItem(AUTO_AGE_KEY); stopCamera(); $autoBtn.classList.remove('primary'); } else { localStorage.setItem(AUTO_AGE_KEY,'1'); $autoBtn.classList.add('primary'); await startCamera(); } });
+
+  $camStop.addEventListener('click', ()=>{ localStorage.removeItem(AUTO_AGE_KEY); stopCamera(); $autoBtn.classList.remove('primary'); });
+  $camPause.addEventListener('click', ()=>{ camPaused = !camPaused; $camPause.textContent = camPaused? '재시작' : '일시정지'; setCamStatus(camPaused? '일시정지' : '실행 중'); });
+
+  // detection loop: uses faceapi if available+models loaded, otherwise no-op
+  async function runDetectionLoop(){
+    const ctx = $camCanvas.getContext('2d');
+    while(detectorEnabled && camStream){
+      if(camPaused){ await new Promise(r=>setTimeout(r,300)); continue; }
+      if($camVideo.readyState >= 2){
+        $camCanvas.width = $camVideo.videoWidth; $camCanvas.height = $camVideo.videoHeight; ctx.drawImage($camVideo,0,0,$camCanvas.width,$camCanvas.height);
+        if(faceapiAvailable && modelLoaded){
+          try{
+            const detections = await faceapi.detectSingleFace($camVideo, new faceapi.TinyFaceDetectorOptions()).withAgeAndGender();
+            if(detections && detections.age){
+              const estAge = Math.round(detections.age);
+              setCamStatus('추정 연령: '+estAge+'세');
+              const group = computeAgeGroupFromYear(new Date().getFullYear()-estAge);
+              applyAgeGroup(group);
+            } else { setCamStatus('얼굴 미검출'); }
+          }catch(e){ console.warn('faceapi detect failed', e); setCamStatus('추정 오류'); }
+        } else {
+          // 모델이 없으면 안내
+          setCamStatus('모델 미설치: 실측 추정 불가(설치 필요)');
+        }
+      }
+      await new Promise(r=>setTimeout(r,900));
+    }
+  }
+
+  // restore auto camera state
+  (function restoreAutoCam(){ try{ if(localStorage.getItem(AUTO_AGE_KEY)==='1'){ $autoBtn && $autoBtn.classList.add('primary'); startCamera(); } }catch(e){} })();
 })();
 </script>
 </body>
