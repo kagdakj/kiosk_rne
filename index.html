@@ -1,99 +1,470 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>키오스크 미니 프리뷰 (Scaled)</title>
-<style>
-  :root{
-    --uiScale: 0.75;           /* 전체 UI 축소 배율 (0.5 ~ 1.25 권장) */
-    --frameW: 950px;           /* 원본 앱의 기준 너비 */
-    --frameH: 640px;           /* 원본 앱의 기준 높이(보이는 영역) */
-    --bg: #0b0b0c; --fg: #f5f5f7; --muted:#9aa0a6; --accent:#2563eb;
-  }
-  html,body{ height:100%; }
-  body{ margin:0; background:var(--bg); color:var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial, sans-serif; }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>키오스크 미니 프리뷰 (Scaled)</title>
+  <style>
+    :root {
+      --uiScale: 0.75;
+      /* 전체 UI 축소 배율 (0.5 ~ 1.25 권장) */
+      --frameW: 950px;
+      /* 원본 앱의 기준 너비 */
+      --frameH: 640px;
+      /* 원본 앱의 기준 높이(보이는 영역) */
+      --bg: #0b0b0c;
+      --fg: #f5f5f7;
+      --muted: #9aa0a6;
+      --accent: #2563eb;
+    }
 
-  header{ position:sticky; top:0; z-index:10; padding:10px 14px; background:#121214; border-bottom:1px solid #2a2a2a; display:flex; gap:12px; align-items:center; }
-  header h1{ font-size:1rem; margin:0; }
-  .sp{ flex:1; }
-  .btn{ cursor:pointer; border:1px solid #34363a; background:#1b1d22; color:#e6e6ea; padding:10px 12px; border-radius:10px; font-weight:700; }
-  .btn.primary{ background:var(--accent); color:#fff; border-color: transparent; }
-  input[type="range"]{ width: 200px; }
+    html,
+    body {
+      height: 100%;
+    }
 
-  /* 미니 프레임 래퍼: 화면 중앙 배치 */
-  .wrap{ min-height: calc(100vh - 56px); display:flex; align-items:center; justify-content:center; padding: 16px; }
-  .frame{ position:relative; width: calc(var(--frameW) * var(--uiScale)); height: calc(var(--frameH) * var(--uiScale)); border-radius:18px; box-shadow: 0 14px 38px rgba(0,0,0,.45), 0 6px 18px rgba(0,0,0,.35); background:#0f0f11; }
-  .chrome{ position:absolute; inset:0; pointer-events:none; border:1px solid #2a2a2a; border-radius:18px; }
-  .scale-shell{ position:absolute; left:0; top:0; transform-origin: top left; transform: scale(var(--uiScale)); width: calc(var(--frameW)); height: calc(var(--frameH)); overflow:hidden; }
-  .note{ color:var(--muted); font-size:.9rem; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial, sans-serif;
+    }
 
-  /* ===== 원본 키오스크 앱(처음 만든 버전)을 내장 ===== */
-  /* 핵심: 원본은 가급적 수정하지 않고, 아래 #appRoot를 통째로 scale-shell 안에 넣는다 */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 10px 14px;
+      background: #121214;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
 
-  /* 원본 스타일(요약본) */
-  .app header{ position:sticky; top:0; background:#fff; color:#111; border-bottom:1px solid #e5e7eb; padding:10px 14px; display:flex; align-items:center; gap:10px; }
-  .app header .title{ font-weight:900; }
-  .app main{ max-width: 980px; margin: 0 auto; padding:14px; font-size:16px; }
-  .app .row{ display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
-  .app .sp{ flex:1; }
-  .app .btn{ cursor:pointer; user-select:none; border:none; border-radius:14px; font-weight:800; padding:12px 16px; background:#2563eb; color:#fff; }
-  .app .btn.ghost{ background:#f3f4f6; color:#111; border:1px solid #e5e7eb; }
-  .app .card{ background:#f8fafc; border:1px solid #e5e7eb; border-radius:14px; padding:14px; }
-  .app .grid{ display:grid; gap:12px; }
-  .app .cols-2{ grid-template-columns: 1.2fr .8fr; }
-  .app .items{ display:grid; gap:12px; grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .app .item{ display:flex; align-items:center; justify-content:space-between; gap:10px; background:#fff; color:#111; border:1px solid #e5e7eb; border-radius:14px; padding:14px; min-height:72px; }
-  .app .chip{ border:1px solid #e5e7eb; border-radius:999px; padding:8px 12px; background:#fff; color:#111; font-weight:700; }
-  .app .chip.on{ background:#2563eb; color:#fff; border-color:transparent; }
-  .app .sticky-btm{ position:sticky; bottom:0; background:#fff; border-top:1px solid #e5e7eb; padding:10px 0; }
+    header h1 {
+      font-size: 1rem;
+      margin: 0;
+    }
 
-  @media (max-width: 980px){ :root{ --frameW: 840px; --frameH: 620px; } }
-  @media (max-width: 860px){ :root{ --frameW: 720px; --frameH: 600px; } }
-  @media (max-width: 740px){ :root{ --frameW: 560px; --frameH: 560px; } }
-  @media (max-width: 600px){ :root{ --frameW: 520px; --frameH: 560px; } }
-  /* ==== Vertical anchor movement (top/middle/bottom) with smooth animation ==== */
-  .wrap{ min-height: calc(100vh - 56px); display:flex; flex-direction: column; align-items:center; justify-content:center; padding:16px; }
-  .frame{ position:relative; width: calc(var(--frameW) * var(--uiScale)); height: calc(var(--frameH) * var(--uiScale)); border-radius:18px; box-shadow: 0 14px 38px rgba(0,0,0,.45), 0 6px 18px rgba(0,0,0,.35); background:#0f0f11; will-change: transform; }
-  .anchor-indicator{ pointer-events:none; position:fixed; left:12px; bottom:12px; color:var(--muted); font-size:.9rem; }
-  /* ===== 연령별 모드 스타일 ===== */
-  /* 공통: body에 age-* 클래스를 붙이면 전체 UI에 적용됩니다 */
-  body.age-child{ --accent: #ff6b6b; font-size:18px; }
-  body.age-teen{ --accent: #7c3aed; font-size:15px; }
-  body.age-adult{ --accent: #2563eb; font-size:16px; }
-  body.age-senior{ --accent: #0b6623; font-size:20px; }
+    .sp {
+      flex: 1;
+    }
 
-  /* 어린이: 화려하고 큼직한 버튼 */
-  body.age-child .app .item{ background: linear-gradient(135deg,#fff8f0,#fff1f3); border-color: #ffd6d6; font-size:1.15rem; padding:18px; border-radius:16px; }
-  body.age-child .app .btn{ border-radius:18px; padding:14px 18px; font-size:1.05rem; background:var(--accent); }
+    .btn {
+      cursor: pointer;
+      border: 1px solid #34363a;
+      background: #1b1d22;
+      color: #e6e6ea;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-weight: 700;
+    }
 
-  /* 청소년: 모던한 컬러, 약간 더 촘촘한 레이아웃 */
-  body.age-teen .app .item{ font-size:1.05rem; }
-  body.age-teen .app .btn{ padding:12px 16px; }
+    .btn.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: transparent;
+    }
 
-  /* 노인: 고대비, 큰 글자, 큰 버튼 */
-  body.age-senior{ background: #080808; }
-  body.age-senior .app .card{ background:#fff; color:#000; border-color:#bbb; }
-  body.age-senior .app header, body.age-senior .app .item, body.age-senior .app .btn{ font-size:1.25rem; }
-  body.age-senior .app .btn{ padding:16px 20px; border-radius:16px; }
+    input[type="range"] {
+      width: 200px;
+    }
 
-  /* 연령 선택 모달 */
-  .age-modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,0.6); z-index:1000; }
-  .age-modal[aria-hidden="true"]{ display:none; }
-  .age-card{ width:320px; max-width:94%; padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.6); }
-  .age-card .chip{ padding:10px 12px; border-radius:12px; font-weight:800; }
-  @media (min-width:900px){ .age-card{ width:420px; } }
+    /* 미니 프레임 래퍼: 화면 중앙 배치 */
+    .wrap {
+      min-height: calc(100vh - 56px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
 
-  /* 카메라 오버레이 */
-  .cam-overlay{ position:fixed; right:12px; top:80px; width:240px; background:rgba(0,0,0,0.6); border-radius:12px; padding:8px; z-index:1200; display:flex; flex-direction:column; gap:8px; }
-  .cam-overlay video{ width:100%; height:auto; border-radius:8px; background:#000; }
-  .cam-overlay canvas{ display:none; }
-  .cam-overlay .note{ color:#ddd; font-size:.85rem; }
-  .cam-hidden{ display:none !important; }
-</style>
+    .frame {
+      position: relative;
+      width: calc(var(--frameW) * var(--uiScale));
+      height: calc(var(--frameH) * var(--uiScale));
+      border-radius: 18px;
+      box-shadow: 0 14px 38px rgba(0, 0, 0, .45), 0 6px 18px rgba(0, 0, 0, .35);
+      background: #0f0f11;
+    }
+
+    .chrome {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border: 1px solid #2a2a2a;
+      border-radius: 18px;
+    }
+
+    .scale-shell {
+      position: absolute;
+      left: 0;
+      top: 0;
+      transform-origin: top left;
+      transform: scale(var(--uiScale));
+      width: calc(var(--frameW));
+      height: calc(var(--frameH));
+      overflow: hidden;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    /* ===== 원본 키오스크 앱(처음 만든 버전)을 내장 ===== */
+    /* 핵심: 원본은 가급적 수정하지 않고, 아래 #appRoot를 통째로 scale-shell 안에 넣는다 */
+
+    /* 원본 스타일(요약본) */
+    .app header {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      color: #111;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .app header .title {
+      font-weight: 900;
+    }
+
+    .app main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 14px;
+      font-size: 16px;
+    }
+
+    .app .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .app .sp {
+      flex: 1;
+    }
+
+    .app .btn {
+      cursor: pointer;
+      user-select: none;
+      border: none;
+      border-radius: 14px;
+      font-weight: 800;
+      padding: 12px 16px;
+      background: #2563eb;
+      color: #fff;
+    }
+
+    .app .btn.ghost {
+      background: #f3f4f6;
+      color: #111;
+      border: 1px solid #e5e7eb;
+    }
+
+    .app .card {
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .app .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .app .cols-2 {
+      grid-template-columns: 1.2fr .8fr;
+    }
+
+    .app .items {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .app .item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #fff;
+      color: #111;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 14px;
+      min-height: 72px;
+    }
+
+    .app .chip {
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      color: #111;
+      font-weight: 700;
+    }
+
+    .app .chip.on {
+      background: #2563eb;
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .app .sticky-btm {
+      position: sticky;
+      bottom: 0;
+      background: #fff;
+      border-top: 1px solid #e5e7eb;
+      padding: 10px 0;
+    }
+
+    @media (max-width: 980px) {
+      :root {
+        --frameW: 840px;
+        --frameH: 620px;
+      }
+    }
+
+    @media (max-width: 860px) {
+      :root {
+        --frameW: 720px;
+        --frameH: 600px;
+      }
+    }
+
+    @media (max-width: 740px) {
+      :root {
+        --frameW: 560px;
+        --frameH: 560px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      :root {
+        --frameW: 520px;
+        --frameH: 560px;
+      }
+    }
+
+    /* ==== Vertical anchor movement (top/middle/bottom) with smooth animation ==== */
+    .wrap {
+      min-height: calc(100vh - 56px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .frame {
+      position: relative;
+      width: calc(var(--frameW) * var(--uiScale));
+      height: calc(var(--frameH) * var(--uiScale));
+      border-radius: 18px;
+      box-shadow: 0 14px 38px rgba(0, 0, 0, .45), 0 6px 18px rgba(0, 0, 0, .35);
+      background: #0f0f11;
+      will-change: transform;
+    }
+
+    .anchor-indicator {
+      pointer-events: none;
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    /* ===== 연령별 모드 스타일 ===== */
+    /* 공통: body에 age-* 클래스를 붙이면 전체 UI에 적용됩니다 */
+    body.age-child {
+      --accent: #ff6b6b;
+      font-size: 18px;
+    }
+
+    body.age-teen {
+      --accent: #7c3aed;
+      font-size: 15px;
+    }
+
+    body.age-adult {
+      --accent: #2563eb;
+      font-size: 16px;
+    }
+
+    body.age-senior {
+      --accent: #0b6623;
+      font-size: 20px;
+    }
+
+    /* 어린이: 화려하고 큼직한 버튼 */
+    body.age-child .app .item {
+      background: linear-gradient(135deg, #fff8f0, #fff1f3);
+      border-color: #ffd6d6;
+      font-size: 1.15rem;
+      padding: 18px;
+      border-radius: 16px;
+    }
+
+    body.age-child .app .btn {
+      border-radius: 18px;
+      padding: 14px 18px;
+      font-size: 1.05rem;
+      background: var(--accent);
+    }
+
+    /* 청소년: 모던한 컬러, 약간 더 촘촘한 레이아웃 */
+    body.age-teen .app .item {
+      font-size: 1.05rem;
+    }
+
+    body.age-teen .app .btn {
+      padding: 12px 16px;
+    }
+
+    /* 노인: 고대비, 큰 글자, 큰 버튼 */
+    body.age-senior {
+      background: #080808;
+    }
+
+    body.age-senior .app .card {
+      background: #fff;
+      color: #000;
+      border-color: #bbb;
+    }
+
+    body.age-senior .app header,
+    body.age-senior .app .item,
+    body.age-senior .app .btn {
+      font-size: 1.25rem;
+    }
+
+    body.age-senior .app .btn {
+      padding: 16px 20px;
+      border-radius: 16px;
+    }
+
+    /* 연령 선택 모달 */
+    .age-modal {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2, 6, 23, 0.6);
+      z-index: 1000;
+    }
+
+    .age-modal[aria-hidden="true"] {
+      display: none;
+    }
+
+    .age-card {
+      width: 320px;
+      max-width: 94%;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+    }
+
+    .age-card .chip {
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-weight: 800;
+    }
+
+    @media (min-width:900px) {
+      .age-card {
+        width: 420px;
+      }
+    }
+
+    /* 카메라 오버레이 */
+    .cam-overlay {
+      position: fixed;
+      right: 12px;
+      top: 80px;
+      width: 240px;
+      background: rgba(0, 0, 0, 0.6);
+      border-radius: 12px;
+      padding: 8px;
+      z-index: 1200;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .cam-overlay video {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      background: #000;
+    }
+
+    .cam-overlay canvas {
+      display: none;
+    }
+
+    .cam-overlay .note {
+      color: #ddd;
+      font-size: .85rem;
+    }
+
+    .cam-hidden {
+      display: none !important;
+    }
+
+    /* 음성 인식 버튼 스타일 */
+    .voice-btn {
+      position: relative;
+    }
+
+    .voice-btn.recording {
+      background: #ef4444 !important;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.7;
+      }
+    }
+
+    .voice-status {
+      position: fixed;
+      left: 12px;
+      top: 80px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      z-index: 1200;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .voice-status.hidden {
+      display: none;
+    }
+  </style>
 </head>
 <!-- face-api.js (브라우저에서 모델 기반 추정을 하려면 필요) -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
 <body>
   <header>
     <h1>키오스크 미니 프리뷰</h1>
@@ -108,9 +479,10 @@
     <button class="btn" id="anchorMid" title="가운데">가운데</button>
     <button class="btn" id="anchorBot" title="아래로">아래로</button>
     <button class="btn primary" id="anchorAuto" title="자동">자동</button>
-  <button class="btn" id="changeAgeBtn" title="연령 변경">연령</button>
+    <button class="btn" id="changeAgeBtn" title="연령 변경">연령</button>
     <button class="btn" data-z="0.50">50%</button>
-  <button class="btn" id="autoAgeCamBtn" title="카메라 자동연령">카메라 자동연령</button>
+    <button class="btn" id="autoAgeCamBtn" title="카메라 자동연령">카메라 자동연령</button>
+    <button class="btn voice-btn" id="voiceBtn" title="음성 주문">🎤 음성</button>
     <button class="btn" data-z="0.75">75%</button>
     <button class="btn" data-z="1.00">100%</button>
     <button class="btn" data-z="1.10">110%</button>
@@ -122,7 +494,8 @@
       <h3 id="ageTitle" style="margin:0 0 8px 0;">연령대 선택</h3>
       <p class="note" style="margin:0 0 12px 0;">생년을 입력하거나 아래 버튼으로 빠르게 선택하세요.</p>
       <div class="row" style="gap:8px; align-items:center;">
-        <input id="birthYear" type="number" min="1900" max="2025" placeholder="예: 1990" style="flex:1; padding:10px; font-size:1rem;" />
+        <input id="birthYear" type="number" min="1900" max="2025" placeholder="예: 1990"
+          style="flex:1; padding:10px; font-size:1rem;" />
         <button class="btn" id="ageApply">적용</button>
       </div>
       <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
@@ -146,6 +519,11 @@
       <button class="btn ghost" id="camStop">중지</button>
       <button class="btn" id="camPause">일시정지</button>
     </div>
+  </div>
+
+  <!-- 음성 인식 상태 표시 -->
+  <div id="voiceStatus" class="voice-status hidden">
+    <div id="voiceStatusText">음성 인식 중...</div>
   </div>
 
   <div class="wrap">
@@ -228,296 +606,461 @@
     </div>
   </div>
 
-<script>
-(function(){
-  /* -- face-api.js 로딩 (선택) --
-     이 프로젝트는 기본적으로 로컬에서 처리합니다. 실제 연령 추정을 사용하려면
-     1) face-api 스크립트를 불러옵니다 (아래 주석을 해제하거나 CDN을 추가)
-     2) 모델(weights)를 호스팅하고 MODEL_URL를 해당 경로로 설정하세요.
-     모델 파일은 face-api의 age/gender 모델을 포함해야 합니다.
-  */
-  // 예: <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js">  (닫는 태그는 실제 HTML에 추가하세요)
+  <script>
+    (function () {
+      /* -- face-api.js 로딩 (선택) --
+         이 프로젝트는 기본적으로 로컬에서 처리합니다. 실제 연령 추정을 사용하려면
+         1) face-api 스크립트를 불러옵니다 (아래 주석을 해제하거나 CDN을 추가)
+         2) 모델(weights)를 호스팅하고 MODEL_URL를 해당 경로로 설정하세요.
+         모델 파일은 face-api의 age/gender 모델을 포함해야 합니다.
+      */
+      // 예: <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js">  (닫는 태그는 실제 HTML에 추가하세요)
 
-  /* ==== Vertical anchor state & animation ==== */
-  const headerH = 56; // px (matches sticky header)
-  const st = { anchor: 'middle', auto:true, ySmoothed: null, target: 0, cur: 0, lastSwitch: 0 };
-  const $wrap = document.querySelector('.wrap');
-  const $frame = document.querySelector('.frame');
-  const $info = document.getElementById('anchorInfo');
+      /* ==== Vertical anchor state & animation ==== */
+      const headerH = 56; // px (matches sticky header)
+      const st = { anchor: 'middle', auto: true, ySmoothed: null, target: 0, cur: 0, lastSwitch: 0 };
+      const $wrap = document.querySelector('.wrap');
+      const $frame = document.querySelector('.frame');
+      const $info = document.getElementById('anchorInfo');
 
-  function metrics(){
-    const vh = window.innerHeight;
-    const available = Math.max(0, vh - headerH - 32 /*wrap padding top+bottom approx*/ - $frame.offsetHeight);
-    const top = 0;
-    const mid = available/2;
-    const bot = available;
-    return { top, mid, bot };
-  }
-  function setAnchor(pos){
-    st.anchor = pos; st.auto = false; updateTarget(); updateIndicator();
-  }
-  function setAuto(on=true){ st.auto = on; updateIndicator(); }
-  function updateIndicator(){ $info.textContent = `ANCHOR: ${st.auto? 'auto→':''}${st.anchor}`; }
-  function updateTarget(){
-    const m = metrics();
-    st.target = (st.anchor==='top')? m.top : (st.anchor==='bottom'? m.bot : m.mid);
-  }
-  function lerp(a,b,t){ return a + (b-a)*t; }
-  function animate(){
-    st.cur = lerp(st.cur, st.target, 0.12);
-    $frame.style.transform = `translateY(${st.cur}px)`;
-    requestAnimationFrame(animate);
-  }
-  requestAnimationFrame(animate);
+      function metrics() {
+        const vh = window.innerHeight;
+        const available = Math.max(0, vh - headerH - 32 /*wrap padding top+bottom approx*/ - $frame.offsetHeight);
+        const top = 0;
+        const mid = available / 2;
+        const bot = available;
+        return { top, mid, bot };
+      }
+      function setAnchor(pos) {
+        st.anchor = pos; st.auto = false; updateTarget(); updateIndicator();
+      }
+      function setAuto(on = true) { st.auto = on; updateIndicator(); }
+      function updateIndicator() { $info.textContent = `ANCHOR: ${st.auto ? 'auto→' : ''}${st.anchor}`; }
+      function updateTarget() {
+        const m = metrics();
+        st.target = (st.anchor === 'top') ? m.top : (st.anchor === 'bottom' ? m.bot : m.mid);
+      }
+      function lerp(a, b, t) { return a + (b - a) * t; }
+      function animate() {
+        st.cur = lerp(st.cur, st.target, 0.12);
+        $frame.style.transform = `translateY(${st.cur}px)`;
+        requestAnimationFrame(animate);
+      }
+      requestAnimationFrame(animate);
 
-  // Auto logic from external faceY (0..1). Call window.uiAnchor.auto(y)
-  function decideAnchorFromY(y){
-    const now = performance.now();
-    // smooth the signal
-    st.ySmoothed = (st.ySmoothed==null)? y : (st.ySmoothed*0.85 + y*0.15);
-    const yS = st.ySmoothed;
-    // hysteresis thresholds
-    const cur = st.anchor;
-    let next = cur;
-    if(cur==='top'){
-      if(yS > 0.45) next = 'middle';
-    }else if(cur==='middle'){
-      if(yS < 0.30) next = 'top';
-      else if(yS > 0.70) next = 'bottom';
-    }else if(cur==='bottom'){
-      if(yS < 0.55) next = 'middle';
-    }
-    // require dwell time 800ms before switching
-    if(next!==cur && (now - st.lastSwitch) > 800){ st.anchor = next; st.lastSwitch = now; updateTarget(); updateIndicator(); }
-  }
+      // Auto logic from external faceY (0..1). Call window.uiAnchor.auto(y)
+      function decideAnchorFromY(y) {
+        const now = performance.now();
+        // smooth the signal
+        st.ySmoothed = (st.ySmoothed == null) ? y : (st.ySmoothed * 0.85 + y * 0.15);
+        const yS = st.ySmoothed;
+        // hysteresis thresholds
+        const cur = st.anchor;
+        let next = cur;
+        if (cur === 'top') {
+          if (yS > 0.45) next = 'middle';
+        } else if (cur === 'middle') {
+          if (yS < 0.30) next = 'top';
+          else if (yS > 0.70) next = 'bottom';
+        } else if (cur === 'bottom') {
+          if (yS < 0.55) next = 'middle';
+        }
+        // require dwell time 800ms before switching
+        if (next !== cur && (now - st.lastSwitch) > 800) { st.anchor = next; st.lastSwitch = now; updateTarget(); updateIndicator(); }
+      }
 
-  // recompute on resize / scale change
-  function recompute(){ updateTarget(); }
-  window.addEventListener('resize', recompute);
+      // recompute on resize / scale change
+      function recompute() { updateTarget(); }
+      window.addEventListener('resize', recompute);
 
-  // expose API
-  window.uiAnchor = {
-    set(pos){ setAnchor(pos); },
-    auto(y){ setAuto(true); if(typeof y==='number') decideAnchorFromY(Math.min(1, Math.max(0, y))); },
-    enableAuto(){ setAuto(true); },
-    disableAuto(){ setAuto(false); },
-    get current(){ return st.anchor; }
-  };
+      // expose API
+      window.uiAnchor = {
+        set(pos) { setAnchor(pos); },
+        auto(y) { setAuto(true); if (typeof y === 'number') decideAnchorFromY(Math.min(1, Math.max(0, y))); },
+        enableAuto() { setAuto(true); },
+        disableAuto() { setAuto(false); },
+        get current() { return st.anchor; }
+      };
 
-  // header controls
-  document.getElementById('anchorTop').onclick = ()=> setAnchor('top');
-  document.getElementById('anchorMid').onclick = ()=> setAnchor('middle');
-  document.getElementById('anchorBot').onclick = ()=> setAnchor('bottom');
-  document.getElementById('anchorAuto').onclick = ()=> setAuto(true);
+      // header controls
+      document.getElementById('anchorTop').onclick = () => setAnchor('top');
+      document.getElementById('anchorMid').onclick = () => setAnchor('middle');
+      document.getElementById('anchorBot').onclick = () => setAnchor('bottom');
+      document.getElementById('anchorAuto').onclick = () => setAuto(true);
 
-  // initial
-  updateTarget(); updateIndicator();
+      // initial
+      updateTarget(); updateIndicator();
 
-  /* === 프리뷰 스케일 조절 === */
-  const range = document.getElementById('scale');
-  const root = document.documentElement;
-  function setScale(v){ root.style.setProperty('--uiScale', String(v)); /* frame size changes → recompute anchor positions */ setTimeout(()=>{ const ev=new Event('resize'); window.dispatchEvent(ev); }, 0); }
-  range.addEventListener('input', e=> setScale(e.target.value));
-  document.querySelectorAll('button[data-z]').forEach(b=> b.addEventListener('click', ()=>{ const v=b.dataset.z; range.value=v; setScale(v); }));
+      /* === 프리뷰 스케일 조절 === */
+      const range = document.getElementById('scale');
+      const root = document.documentElement;
+      function setScale(v) { root.style.setProperty('--uiScale', String(v)); /* frame size changes → recompute anchor positions */ setTimeout(() => { const ev = new Event('resize'); window.dispatchEvent(ev); }, 0); }
+      range.addEventListener('input', e => setScale(e.target.value));
+      document.querySelectorAll('button[data-z]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.z; range.value = v; setScale(v); }));
 
-  /* === 원본 앱 로직(간단화 요약) === */
-  const PRODUCTS = [
-    { id:'a1', cat:'커피',   name:'아메리카노', price:2500 },
-    { id:'a2', cat:'커피',   name:'카페라테',   price:3200 },
-    { id:'a3', cat:'커피',   name:'바닐라라테', price:3600 },
-    { id:'t1', cat:'티',     name:'녹차',       price:2800 },
-    { id:'t2', cat:'티',     name:'얼그레이',   price:3000 },
-    { id:'c1', cat:'초콜릿', name:'핫초코',     price:3000 },
-    { id:'s1', cat:'스낵',   name:'쿠키',       price:1800 },
-    { id:'s2', cat:'스낵',   name:'머핀',       price:2200 }
-  ];
-  const CATS = [...new Set(PRODUCTS.map(p=>p.cat))];
-  const OPTION_PRESET = {
-    size: [ ['S','소'], ['M','중'], ['L','대'] ],
-    sweet: [ ['0','무가당'], ['50','50%'], ['100','100%'] ],
-    ice: [ ['less','적게'], ['normal','보통'], ['more','많이'] ]
-  };
-  const state = { cart:[], cat:CATS[0] };
-  const $ = s=>document.querySelector(s);
-  const $$ = s=>Array.from(document.querySelectorAll(s));
-  const fmt = v=> v.toLocaleString('ko-KR');
+      /* === 원본 앱 로직(간단화 요약) === */
+      const PRODUCTS = [
+        { id: 'a1', cat: '커피', name: '아메리카노', price: 2500 },
+        { id: 'a2', cat: '커피', name: '카페라테', price: 3200 },
+        { id: 'a3', cat: '커피', name: '바닐라라테', price: 3600 },
+        { id: 't1', cat: '티', name: '녹차', price: 2800 },
+        { id: 't2', cat: '티', name: '얼그레이', price: 3000 },
+        { id: 'c1', cat: '초콜릿', name: '핫초코', price: 3000 },
+        { id: 's1', cat: '스낵', name: '쿠키', price: 1800 },
+        { id: 's2', cat: '스낵', name: '머핀', price: 2200 }
+      ];
+      const CATS = [...new Set(PRODUCTS.map(p => p.cat))];
+      const OPTION_PRESET = {
+        size: [['S', '소'], ['M', '중'], ['L', '대']],
+        sweet: [['0', '무가당'], ['50', '50%'], ['100', '100%']],
+        ice: [['less', '적게'], ['normal', '보통'], ['more', '많이']]
+      };
+      const state = { cart: [], cat: CATS[0] };
+      const $ = s => document.querySelector(s);
+      const $$ = s => Array.from(document.querySelectorAll(s));
+      const fmt = v => v.toLocaleString('ko-KR');
 
-  function renderCats(){
-    const wrap = $('#catTabs'); wrap.innerHTML='';
-    CATS.forEach(cat=>{
-      const b = document.createElement('button'); b.className='chip'+(state.cat===cat?' on':''); b.textContent=cat;
-      b.addEventListener('click', ()=>{ state.cat=cat; renderCats(); renderItems(); });
-      wrap.appendChild(b);
-    });
-  }
-  function renderItems(){
-    const grid=$('#itemGrid'); grid.innerHTML='';
-    PRODUCTS.filter(p=>p.cat===state.cat).forEach(p=>{
-      const btn=document.createElement('button'); btn.className='item';
-      btn.innerHTML=`<div><div style="font-weight:800">${p.name}</div><div class="note">${p.cat}</div></div><div><strong>₩${fmt(p.price)}</strong></div>`;
-      btn.addEventListener('click', ()=> openOption(p));
-      grid.appendChild(btn);
-    });
-  }
-  function openOption(prod){
-    const m=$('#optModal'); $('#optTitle').textContent=`[${prod.name}] 옵션`;
-    fill('#optSize','size','M'); fill('#optSweet','sweet','50'); fill('#optIce','ice','normal');
-    function fill(sel,key,def){ const row=$(sel); row.innerHTML='';
-      for(const [val,label] of OPTION_PRESET[key]){ const b=document.createElement('button'); b.className='chip'; b.textContent=label; b.dataset.group=key; b.dataset.val=val; if(val===def) b.classList.add('on'); b.addEventListener('click',()=>{ $$(`button.chip[data-group="${key}"]`).forEach(x=>x.classList.remove('on')); b.classList.add('on'); }); row.appendChild(b);} }
-    $('#optClose').onclick=()=>m.close();
-    $('#optOk').onclick=()=>{ const sel=g=> $(`button.chip[data-group="${g}"][class*="on"]`)?.dataset.val; addToCart({ id:prod.id,name:prod.name,price:prod.price,size:sel('size'),sweet:sel('sweet'),ice:sel('ice'),qty:1 }); m.close(); };
-    m.showModal();
-  }
-  function addToCart(item){ const key=`${item.id}-${item.size}-${item.sweet}-${item.ice}`; const f=state.cart.find(it=>`${it.id}-${it.size}-${it.sweet}-${it.ice}`===key); if(f) f.qty+=1; else state.cart.push(item); renderCart(); $('#btnNext').disabled = state.cart.length===0; }
-  function renderCart(){ const box=$('#cartList'); box.innerHTML=''; let total=0; state.cart.forEach((it,idx)=>{ const sub=it.price*it.qty; total+=sub; const line=document.createElement('div'); line.className='row'; line.style.justifyContent='space-between'; line.innerHTML=`<div><strong>${it.name}</strong> <span class='note'>(${it.size}/${it.sweet}/${it.ice})×${it.qty}</span></div><div><strong>₩${fmt(sub)}</strong></div>`; box.appendChild(line); }); $('#cartTotal').textContent=`₩${fmt(total)}`; }
-  function showConfirm(){ const list=$('#confirmList'); list.innerHTML=''; let total=0; state.cart.forEach(it=>{ const sub=it.price*it.qty; total+=sub; const row=document.createElement('div'); row.className='row'; row.style.justifyContent='space-between'; row.innerHTML=`<div>${it.name} <span class='note'>(${it.size}/${it.sweet}/${it.ice}) × ${it.qty}</span></div><div><strong>₩${fmt(sub)}</strong></div>`; list.appendChild(row); }); $('#confirmTotal').textContent=`₩${fmt(total)}`; document.querySelector('section[aria-labelledby="sec-menu"]').style.display='none'; $('#sectionConfirm').style.display='block'; }
-  function showPaid(){ $('#sectionConfirm').style.display='none'; $('#sectionPaid').style.display='block'; $('#orderNo').textContent=(Date.now()%1000000).toString().padStart(6,'0'); }
+      function renderCats() {
+        const wrap = $('#catTabs'); wrap.innerHTML = '';
+        CATS.forEach(cat => {
+          const b = document.createElement('button'); b.className = 'chip' + (state.cat === cat ? ' on' : ''); b.textContent = cat;
+          b.addEventListener('click', () => { state.cat = cat; renderCats(); renderItems(); });
+          wrap.appendChild(b);
+        });
+      }
+      function renderItems() {
+        const grid = $('#itemGrid'); grid.innerHTML = '';
+        PRODUCTS.filter(p => p.cat === state.cat).forEach(p => {
+          const btn = document.createElement('button'); btn.className = 'item';
+          btn.innerHTML = `<div><div style="font-weight:800">${p.name}</div><div class="note">${p.cat}</div></div><div><strong>₩${fmt(p.price)}</strong></div>`;
+          btn.addEventListener('click', () => openOption(p));
+          grid.appendChild(btn);
+        });
+      }
+      function openOption(prod) {
+        const m = $('#optModal'); $('#optTitle').textContent = `[${prod.name}] 옵션`;
+        fill('#optSize', 'size', 'M'); fill('#optSweet', 'sweet', '50'); fill('#optIce', 'ice', 'normal');
+        function fill(sel, key, def) {
+          const row = $(sel); row.innerHTML = '';
+          for (const [val, label] of OPTION_PRESET[key]) { const b = document.createElement('button'); b.className = 'chip'; b.textContent = label; b.dataset.group = key; b.dataset.val = val; if (val === def) b.classList.add('on'); b.addEventListener('click', () => { $$(`button.chip[data-group="${key}"]`).forEach(x => x.classList.remove('on')); b.classList.add('on'); }); row.appendChild(b); }
+        }
+        $('#optClose').onclick = () => m.close();
+        $('#optOk').onclick = () => { const sel = g => $(`button.chip[data-group="${g}"][class*="on"]`)?.dataset.val; addToCart({ id: prod.id, name: prod.name, price: prod.price, size: sel('size'), sweet: sel('sweet'), ice: sel('ice'), qty: 1 }); m.close(); };
+        m.showModal();
+      }
+      function addToCart(item) { const key = `${item.id}-${item.size}-${item.sweet}-${item.ice}`; const f = state.cart.find(it => `${it.id}-${it.size}-${it.sweet}-${it.ice}` === key); if (f) f.qty += 1; else state.cart.push(item); renderCart(); $('#btnNext').disabled = state.cart.length === 0; }
+      function renderCart() { const box = $('#cartList'); box.innerHTML = ''; let total = 0; state.cart.forEach((it, idx) => { const sub = it.price * it.qty; total += sub; const line = document.createElement('div'); line.className = 'row'; line.style.justifyContent = 'space-between'; line.innerHTML = `<div><strong>${it.name}</strong> <span class='note'>(${it.size}/${it.sweet}/${it.ice})×${it.qty}</span></div><div><strong>₩${fmt(sub)}</strong></div>`; box.appendChild(line); }); $('#cartTotal').textContent = `₩${fmt(total)}`; }
+      function showConfirm() { const list = $('#confirmList'); list.innerHTML = ''; let total = 0; state.cart.forEach(it => { const sub = it.price * it.qty; total += sub; const row = document.createElement('div'); row.className = 'row'; row.style.justifyContent = 'space-between'; row.innerHTML = `<div>${it.name} <span class='note'>(${it.size}/${it.sweet}/${it.ice}) × ${it.qty}</span></div><div><strong>₩${fmt(sub)}</strong></div>`; list.appendChild(row); }); $('#confirmTotal').textContent = `₩${fmt(total)}`; document.querySelector('section[aria-labelledby="sec-menu"]').style.display = 'none'; $('#sectionConfirm').style.display = 'block'; }
+      function showPaid() { $('#sectionConfirm').style.display = 'none'; $('#sectionPaid').style.display = 'block'; $('#orderNo').textContent = (Date.now() % 1000000).toString().padStart(6, '0'); }
 
-  $('#btnCancel').addEventListener('click', ()=>{ if(confirm('주문을 취소할까요?')) location.reload(); });
-  $('#btnClear').addEventListener('click', ()=>{ state.cart=[]; renderCart(); $('#btnNext').disabled=true; });
-  $('#btnNext').addEventListener('click', showConfirm);
-  $('#btnBackToMenu').addEventListener('click', ()=>{ $('#sectionConfirm').style.display='none'; document.querySelector('section[aria-labelledby="sec-menu"]').style.display='block'; });
-  $('#btnPay').addEventListener('click', showPaid);
-  $('#btnNew').addEventListener('click', ()=> location.reload());
+      $('#btnCancel').addEventListener('click', () => { if (confirm('주문을 취소할까요?')) location.reload(); });
+      $('#btnClear').addEventListener('click', () => { state.cart = []; renderCart(); $('#btnNext').disabled = true; });
+      $('#btnNext').addEventListener('click', showConfirm);
+      $('#btnBackToMenu').addEventListener('click', () => { $('#sectionConfirm').style.display = 'none'; document.querySelector('section[aria-labelledby="sec-menu"]').style.display = 'block'; });
+      $('#btnPay').addEventListener('click', showPaid);
+      $('#btnNew').addEventListener('click', () => location.reload());
 
-  renderCats(); renderItems(); renderCart();
+      renderCats(); renderItems(); renderCart();
 
-  /* ===== 연령 기반 적응 UI 로직 ===== */
-  const AGE_KEY = 'kioskAgeGroup';
-  const YEAR_KEY = 'kioskBirthYear';
-  const $ageModal = document.getElementById('ageModal');
-  const $birth = document.getElementById('birthYear');
-  const $ageApply = document.getElementById('ageApply');
-  const $ageSkip = document.getElementById('ageSkip');
-  const $changeAgeBtn = document.getElementById('changeAgeBtn');
+      /* ===== 연령 기반 적응 UI 로직 ===== */
+      const AGE_KEY = 'kioskAgeGroup';
+      const YEAR_KEY = 'kioskBirthYear';
+      const $ageModal = document.getElementById('ageModal');
+      const $birth = document.getElementById('birthYear');
+      const $ageApply = document.getElementById('ageApply');
+      const $ageSkip = document.getElementById('ageSkip');
+      const $changeAgeBtn = document.getElementById('changeAgeBtn');
 
-  function computeAgeGroupFromYear(y){
-    const year = Number(y);
-    if(!year || isNaN(year) || year < 1900 || year > (new Date().getFullYear()+1)) return 'adult';
-    const age = new Date().getFullYear() - year;
-    if(age <= 12) return 'child';
-    if(age <= 17) return 'teen';
-    if(age <= 64) return 'adult';
-    return 'senior';
-  }
+      function computeAgeGroupFromYear(y) {
+        const year = Number(y);
+        if (!year || isNaN(year) || year < 1900 || year > (new Date().getFullYear() + 1)) return 'adult';
+        const age = new Date().getFullYear() - year;
+        if (age <= 12) return 'child';
+        if (age <= 17) return 'teen';
+        if (age <= 64) return 'adult';
+        return 'senior';
+      }
 
-  function applyAgeGroup(group){
-    const body = document.body;
-    ['age-child','age-teen','age-adult','age-senior'].forEach(c=> body.classList.remove(c));
-    body.classList.add(`age-${group}`);
-    try{ localStorage.setItem(AGE_KEY, group); }catch(e){}
-    // highlight chips inside modal if present
-    $ageModal.querySelectorAll('button.chip').forEach(b=> b.classList.toggle('on', b.dataset.age===group));
-  }
+      function applyAgeGroup(group) {
+        const body = document.body;
+        ['age-child', 'age-teen', 'age-adult', 'age-senior'].forEach(c => body.classList.remove(c));
+        body.classList.add(`age-${group}`);
+        try { localStorage.setItem(AGE_KEY, group); } catch (e) { }
+        // highlight chips inside modal if present
+        $ageModal.querySelectorAll('button.chip').forEach(b => b.classList.toggle('on', b.dataset.age === group));
+      }
 
-  function openAgeModal(){ $ageModal.setAttribute('aria-hidden','false'); $birth.focus(); }
-  function closeAgeModal(){ $ageModal.setAttribute('aria-hidden','true'); }
+      function openAgeModal() { $ageModal.setAttribute('aria-hidden', 'false'); $birth.focus(); }
+      function closeAgeModal() { $ageModal.setAttribute('aria-hidden', 'true'); }
 
-  // wire chips
-  $ageModal.querySelectorAll('button.chip').forEach(b=> b.addEventListener('click', ()=>{ const g=b.dataset.age; applyAgeGroup(g); try{ localStorage.setItem(AGE_KEY,g); localStorage.removeItem(YEAR_KEY); }catch(e){}; closeAgeModal(); }));
+      // wire chips
+      $ageModal.querySelectorAll('button.chip').forEach(b => b.addEventListener('click', () => { const g = b.dataset.age; applyAgeGroup(g); try { localStorage.setItem(AGE_KEY, g); localStorage.removeItem(YEAR_KEY); } catch (e) { }; closeAgeModal(); }));
 
-  // apply from birth year
-  $ageApply.addEventListener('click', ()=>{
-    const v = $birth.value.trim();
-    const g = computeAgeGroupFromYear(v);
-    applyAgeGroup(g);
-    try{ localStorage.setItem(AGE_KEY,g); if(v) localStorage.setItem(YEAR_KEY, v); }catch(e){}
-    closeAgeModal();
-  });
+      // apply from birth year
+      $ageApply.addEventListener('click', () => {
+        const v = $birth.value.trim();
+        const g = computeAgeGroupFromYear(v);
+        applyAgeGroup(g);
+        try { localStorage.setItem(AGE_KEY, g); if (v) localStorage.setItem(YEAR_KEY, v); } catch (e) { }
+        closeAgeModal();
+      });
 
-  $ageSkip.addEventListener('click', ()=>{ applyAgeGroup('adult'); closeAgeModal(); });
-  $changeAgeBtn && $changeAgeBtn.addEventListener('click', ()=>{ openAgeModal(); });
+      $ageSkip.addEventListener('click', () => { applyAgeGroup('adult'); closeAgeModal(); });
+      $changeAgeBtn && $changeAgeBtn.addEventListener('click', () => { openAgeModal(); });
 
-  // restore saved group/year or prompt
-  (function restoreAge(){
-    try{
-      const saved = localStorage.getItem(AGE_KEY);
-      const byear = localStorage.getItem(YEAR_KEY);
-      if(saved){ applyAgeGroup(saved); }
-      else if(byear){ applyAgeGroup(computeAgeGroupFromYear(byear)); }
-      else { openAgeModal(); }
-    }catch(e){ openAgeModal(); }
-  })();
+      // restore saved group/year or prompt
+      (function restoreAge() {
+        try {
+          const saved = localStorage.getItem(AGE_KEY);
+          const byear = localStorage.getItem(YEAR_KEY);
+          if (saved) { applyAgeGroup(saved); }
+          else if (byear) { applyAgeGroup(computeAgeGroupFromYear(byear)); }
+          else { openAgeModal(); }
+        } catch (e) { openAgeModal(); }
+      })();
 
-  /* ===== 카메라 기반 자동 연령 추적 (로컬, 개인정보 주의) ===== */
-  const AUTO_AGE_KEY = 'kioskAutoAgeEnabled';
-  const MODEL_URLS = [
-    './models',
-    'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'
-  ];
-  const $autoBtn = document.getElementById('autoAgeCamBtn');
-  const $camOverlay = document.getElementById('camOverlay');
-  const $camVideo = document.getElementById('camVideo');
-  const $camCanvas = document.getElementById('camCanvas');
-  const $camStatus = document.getElementById('camStatus');
-  const $camStop = document.getElementById('camStop');
-  const $camPause = document.getElementById('camPause');
-  let camStream = null; let camPaused = false; let detectorEnabled = false; let faceapiAvailable = (window.faceapi!==undefined);
-  let modelLoaded = false; let modelBase = null;
+      /* ===== 카메라 기반 자동 연령 추적 (로컬, 개인정보 주의) ===== */
+      const AUTO_AGE_KEY = 'kioskAutoAgeEnabled';
+      const MODEL_URLS = [
+        './models',
+        'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'
+      ];
+      const $autoBtn = document.getElementById('autoAgeCamBtn');
+      const $camOverlay = document.getElementById('camOverlay');
+      const $camVideo = document.getElementById('camVideo');
+      const $camCanvas = document.getElementById('camCanvas');
+      const $camStatus = document.getElementById('camStatus');
+      const $camStop = document.getElementById('camStop');
+      const $camPause = document.getElementById('camPause');
+      let camStream = null; let camPaused = false; let detectorEnabled = false; let faceapiAvailable = (window.faceapi !== undefined);
+      let modelLoaded = false; let modelBase = null;
 
-  function setCamStatus(text){ $camStatus.textContent = '카메라: '+text; }
+      function setCamStatus(text) { $camStatus.textContent = '카메라: ' + text; }
 
-  async function tryLoadModels(){
-    if(!window.faceapi) return false;
-    for(const base of MODEL_URLS){
-      try{
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(base),
-          faceapi.nets.ageGenderNet.loadFromUri(base)
-        ]);
-        modelLoaded = true; modelBase = base; console.info('face-api models loaded from', base); return true;
-      }catch(e){ console.warn('model load failed from', base, e); }
-    }
-    return false;
-  }
+      async function tryLoadModels() {
+        if (!window.faceapi) return false;
+        for (const base of MODEL_URLS) {
+          try {
+            await Promise.all([
+              faceapi.nets.tinyFaceDetector.loadFromUri(base),
+              faceapi.nets.ageGenderNet.loadFromUri(base)
+            ]);
+            modelLoaded = true; modelBase = base; console.info('face-api models loaded from', base); return true;
+          } catch (e) { console.warn('model load failed from', base, e); }
+        }
+        return false;
+      }
 
-  async function startCamera(){
-    if(camStream) return;
-    try{
-      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio:false });
-      $camVideo.srcObject = camStream; $camOverlay.classList.remove('cam-hidden'); $camOverlay.setAttribute('aria-hidden','false'); setCamStatus('실행 중');
-      // try to load face-api models if available
-      if(faceapiAvailable && !modelLoaded){ await tryLoadModels(); }
-      detectorEnabled = true; runDetectionLoop();
-    }catch(err){ console.error('카메라 시작 실패', err); setCamStatus('권한 없음 또는 오류'); detectorEnabled=false; }
-  }
+      async function startCamera() {
+        if (camStream) return;
+        try {
+          camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+          $camVideo.srcObject = camStream; $camOverlay.classList.remove('cam-hidden'); $camOverlay.setAttribute('aria-hidden', 'false'); setCamStatus('실행 중');
+          // try to load face-api models if available
+          if (faceapiAvailable && !modelLoaded) { await tryLoadModels(); }
+          detectorEnabled = true; runDetectionLoop();
+        } catch (err) { console.error('카메라 시작 실패', err); setCamStatus('권한 없음 또는 오류'); detectorEnabled = false; }
+      }
 
-  function stopCamera(){ if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; } $camOverlay.classList.add('cam-hidden'); $camOverlay.setAttribute('aria-hidden','true'); setCamStatus('비활성'); detectorEnabled=false; }
+      function stopCamera() { if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; } $camOverlay.classList.add('cam-hidden'); $camOverlay.setAttribute('aria-hidden', 'true'); setCamStatus('비활성'); detectorEnabled = false; }
 
-  $autoBtn && $autoBtn.addEventListener('click', async ()=>{ const enabled = localStorage.getItem(AUTO_AGE_KEY)==='1'; if(enabled){ localStorage.removeItem(AUTO_AGE_KEY); stopCamera(); $autoBtn.classList.remove('primary'); } else { localStorage.setItem(AUTO_AGE_KEY,'1'); $autoBtn.classList.add('primary'); await startCamera(); } });
+      $autoBtn && $autoBtn.addEventListener('click', async () => { const enabled = localStorage.getItem(AUTO_AGE_KEY) === '1'; if (enabled) { localStorage.removeItem(AUTO_AGE_KEY); stopCamera(); $autoBtn.classList.remove('primary'); } else { localStorage.setItem(AUTO_AGE_KEY, '1'); $autoBtn.classList.add('primary'); await startCamera(); } });
 
-  $camStop.addEventListener('click', ()=>{ localStorage.removeItem(AUTO_AGE_KEY); stopCamera(); $autoBtn.classList.remove('primary'); });
-  $camPause.addEventListener('click', ()=>{ camPaused = !camPaused; $camPause.textContent = camPaused? '재시작' : '일시정지'; setCamStatus(camPaused? '일시정지' : '실행 중'); });
+      $camStop.addEventListener('click', () => { localStorage.removeItem(AUTO_AGE_KEY); stopCamera(); $autoBtn.classList.remove('primary'); });
+      $camPause.addEventListener('click', () => { camPaused = !camPaused; $camPause.textContent = camPaused ? '재시작' : '일시정지'; setCamStatus(camPaused ? '일시정지' : '실행 중'); });
 
-  // detection loop: uses faceapi if available+models loaded, otherwise no-op
-  async function runDetectionLoop(){
-    const ctx = $camCanvas.getContext('2d');
-    while(detectorEnabled && camStream){
-      if(camPaused){ await new Promise(r=>setTimeout(r,300)); continue; }
-      if($camVideo.readyState >= 2){
-        $camCanvas.width = $camVideo.videoWidth; $camCanvas.height = $camVideo.videoHeight; ctx.drawImage($camVideo,0,0,$camCanvas.width,$camCanvas.height);
-        if(faceapiAvailable && modelLoaded){
-          try{
-            const detections = await faceapi.detectSingleFace($camVideo, new faceapi.TinyFaceDetectorOptions()).withAgeAndGender();
-            if(detections && detections.age){
-              const estAge = Math.round(detections.age);
-              setCamStatus('추정 연령: '+estAge+'세');
-              const group = computeAgeGroupFromYear(new Date().getFullYear()-estAge);
-              applyAgeGroup(group);
-            } else { setCamStatus('얼굴 미검출'); }
-          }catch(e){ console.warn('faceapi detect failed', e); setCamStatus('추정 오류'); }
-        } else {
-          // 모델이 없으면 안내
-          setCamStatus('모델 미설치: 실측 추정 불가(설치 필요)');
+      // detection loop: uses faceapi if available+models loaded, otherwise no-op
+      async function runDetectionLoop() {
+        const ctx = $camCanvas.getContext('2d');
+        while (detectorEnabled && camStream) {
+          if (camPaused) { await new Promise(r => setTimeout(r, 300)); continue; }
+          if ($camVideo.readyState >= 2) {
+            $camCanvas.width = $camVideo.videoWidth; $camCanvas.height = $camVideo.videoHeight; ctx.drawImage($camVideo, 0, 0, $camCanvas.width, $camCanvas.height);
+            if (faceapiAvailable && modelLoaded) {
+              try {
+                const detections = await faceapi.detectSingleFace($camVideo, new faceapi.TinyFaceDetectorOptions()).withAgeAndGender();
+                if (detections && detections.age) {
+                  const estAge = Math.round(detections.age);
+                  setCamStatus('추정 연령: ' + estAge + '세');
+                  const group = computeAgeGroupFromYear(new Date().getFullYear() - estAge);
+                  applyAgeGroup(group);
+                } else { setCamStatus('얼굴 미검출'); }
+              } catch (e) { console.warn('faceapi detect failed', e); setCamStatus('추정 오류'); }
+            } else {
+              // 모델이 없으면 안내
+              setCamStatus('모델 미설치: 실측 추정 불가(설치 필요)');
+            }
+          }
+          await new Promise(r => setTimeout(r, 900));
         }
       }
-      await new Promise(r=>setTimeout(r,900));
-    }
-  }
 
-  // restore auto camera state
-  (function restoreAutoCam(){ try{ if(localStorage.getItem(AUTO_AGE_KEY)==='1'){ $autoBtn && $autoBtn.classList.add('primary'); startCamera(); } }catch(e){} })();
-})();
-</script>
+      // restore auto camera state
+      (function restoreAutoCam() { try { if (localStorage.getItem(AUTO_AGE_KEY) === '1') { $autoBtn && $autoBtn.classList.add('primary'); startCamera(); } } catch (e) { } })();
+    })();
+
+          /* ===== 음성 인식 기능 ===== */
+      // 웹훅 URL 설정 (n8n 등)
+      const WEBHOOK_URL = 'https://n8n.taetae.dev/webhook-test/fc5a5594-ef80-4776-8b0d-fbbfee42227a'; // 여기에 n8n 웹훅 URL을 입력하세요
+
+      const $voiceBtn = document.getElementById('voiceBtn');
+      const $voiceStatus = document.getElementById('voiceStatus');
+      const $voiceStatusText = document.getElementById('voiceStatusText');
+
+      // Web Speech API 지원 확인
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      let recognition = null;
+      let isRecording = false;
+
+      if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.lang = 'ko-KR'; // 한국어 설정
+        recognition.continuous = false; // 한 번의 인식 후 종료
+        recognition.interimResults = true; // 중간 결과 표시
+
+        // 음성 인식 시작 이벤트
+        recognition.onstart = function() {
+          console.log('음성 인식 시작');
+          isRecording = true;
+          $voiceBtn.classList.add('recording');
+          $voiceStatus.classList.remove('hidden');
+          $voiceStatusText.textContent = '🎤 듣고 있습니다... 말씀하세요';
+        };
+
+        // 음성 인식 결과 이벤트
+        recognition.onresult = function(event) {
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript;
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+
+          // 중간 결과 표시
+          if (interimTranscript) {
+            $voiceStatusText.textContent = `🎤 "${interimTranscript}"`;
+          }
+
+          // 최종 결과 처리
+          if (finalTranscript) {
+            console.log('인식된 텍스트:', finalTranscript);
+            $voiceStatusText.textContent = `✓ 인식 완료: "${finalTranscript}"`;
+            
+            // 웹훅으로 전송
+            sendToWebhook(finalTranscript);
+          }
+        };
+
+        // 음성 인식 종료 이벤트
+        recognition.onend = function() {
+          console.log('음성 인식 종료');
+          isRecording = false;
+          $voiceBtn.classList.remove('recording');
+          
+          // 3초 후 상태 메시지 숨기기
+          setTimeout(() => {
+            $voiceStatus.classList.add('hidden');
+          }, 3000);
+        };
+
+        // 오류 처리
+        recognition.onerror = function(event) {
+          console.error('음성 인식 오류:', event.error);
+          isRecording = false;
+          $voiceBtn.classList.remove('recording');
+          
+          let errorMessage = '오류가 발생했습니다';
+          switch(event.error) {
+            case 'no-speech':
+              errorMessage = '음성이 감지되지 않았습니다';
+              break;
+            case 'audio-capture':
+              errorMessage = '마이크를 찾을 수 없습니다';
+              break;
+            case 'not-allowed':
+              errorMessage = '마이크 권한이 거부되었습니다';
+              break;
+            case 'network':
+              errorMessage = '네트워크 오류가 발생했습니다';
+              break;
+          }
+          
+          $voiceStatusText.textContent = `❌ ${errorMessage}`;
+          setTimeout(() => {
+            $voiceStatus.classList.add('hidden');
+          }, 3000);
+        };
+      }
+
+      // 웹훅으로 데이터 전송
+      async function sendToWebhook(text) {
+        if (!WEBHOOK_URL) {
+          console.warn('웹훅 URL이 설정되지 않았습니다');
+          $voiceStatusText.textContent = '⚠️ 웹훅 URL을 설정해주세요';
+          return;
+        }
+
+        try {
+          const payload = {
+            text: text,
+            timestamp: new Date().toISOString(),
+            language: 'ko-KR'
+          };
+
+          console.log('웹훅으로 전송:', payload);
+          
+          const response = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (response.ok) {
+            console.log('웹훅 전송 성공');
+            $voiceStatusText.textContent = `✓ 전송 완료: "${text}"`;
+          } else {
+            console.error('웹훅 전송 실패:', response.status);
+            $voiceStatusText.textContent = `❌ 전송 실패 (${response.status})`;
+          }
+        } catch (error) {
+          console.error('웹훅 전송 오류:', error);
+          $voiceStatusText.textContent = `❌ 전송 오류: ${error.message}`;
+        }
+      }
+
+      // 음성 인식 버튼 클릭 이벤트
+      if ($voiceBtn) {
+        $voiceBtn.addEventListener('click', function() {
+          if (!SpeechRecognition) {
+            alert('이 브라우저는 음성 인식을 지원하지 않습니다.\nChrome 또는 Edge 브라우저를 사용해주세요.');
+            return;
+          }
+
+          if (isRecording) {
+            // 녹음 중이면 중지
+            recognition.stop();
+          } else {
+            // 녹음 시작
+            try {
+              recognition.start();
+            } catch (error) {
+              console.error('음성 인식 시작 오류:', error);
+              if (error.name === 'InvalidStateError') {
+                // 이미 실행 중인 경우 무시
+                console.log('음성 인식이 이미 실행 중입니다');
+              }
+            }
+          }
+        });
+      }
+  </script>
 </body>
+
 </html>
