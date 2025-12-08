@@ -1,0 +1,52 @@
+/* 아래 CSS 코드를 index.html 파일의 318번 줄 다음에 추가하세요 */
+
+    /* 장바구니 및 합계 스타일 */
+    #cartTotal, #confirmTotal {
+      font-size: 1.8rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 900;
+    }
+    
+    .app .note {
+      color: #718096;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    
+    /* 모달 스타일 */
+    .app dialog {
+      border: none;
+      border-radius: 24px;
+      padding: 0;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 500px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .app dialog::backdrop {
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+    }
+    
+    .app dialog .card {
+      margin: 0;
+      box-shadow: none;
+    }
+    
+    .app dialog h3 {
+      color: #2d3748;
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin: 0 0 20px 0;
+    }
+    
+    /* HR 스타일 */
+    .app hr {
+      border: none;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+      margin: 16px 0;
+    }
