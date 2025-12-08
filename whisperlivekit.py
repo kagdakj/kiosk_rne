@@ -1,0 +1,1 @@
+whisperlivekit-server --model base --language ko
