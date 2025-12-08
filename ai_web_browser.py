@@ -6,9 +6,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
 
-# ------------------------------------------
-# 1) Chrome 브라우저 초기화
-# ------------------------------------------
+# -----------------------------------------------------
+# 1) Chrome 초기화
+# -----------------------------------------------------
 def init_browser():
     options = webdriver.ChromeOptions()
     options.add_experimental_option("detach", True)
@@ -16,47 +16,72 @@ def init_browser():
     return driver
 
 
-# ------------------------------------------
-# 2) LLM 프롬프트 템플릿
-# ------------------------------------------
+# -----------------------------------------------------
+# 2) LLM System Prompt
+# -----------------------------------------------------
 LLM_SYSTEM_PROMPT = """
 You are a browser automation controller.
-Output ONLY JSON with this exact format:
+
+You will receive:
+1. User command
+2. The full HTML source of the current page
+
+Your task:
+- Analyze the HTML
+- Decide the correct CSS selector
+- Output ONLY a JSON action with this format:
 
 {
     "action": "click | type | goto | scroll | wait",
     "selector": "CSS selector (if needed)",
-    "value": "value to type or URL",
-    "wait": seconds_to_wait
+    "value": "",
+    "wait": 1
 }
 
-NO explanations, NO additional text.
+NEVER output text other than JSON.
+If the command cannot be done, output:
+{
+    "action": "wait",
+    "selector": "",
+    "value": "",
+    "wait": 1
+}
 """
 
 
-# ------------------------------------------
-# 3) LLM에게 명령어 전달 → JSON 행동 계획 받기
-# ------------------------------------------
-def ask_llm(user_command):
+# -----------------------------------------------------
+# 3) LLM에게 (명령어 + 페이지 소스) 전달 → JSON action 생성
+# -----------------------------------------------------
+def ask_llm(user_cmd, html_source):
+    content = f"""
+User Command: {user_cmd}
+
+HTML Source of Current Page:
+----------------------------
+{html_source}
+----------------------------
+"""
+
     response = ollama.chat(
         model="llama3.1",
         messages=[
             {"role": "system", "content": LLM_SYSTEM_PROMPT},
-            {"role": "user", "content": user_command}
+            {"role": "user", "content": content}
         ]
     )
-    text = response['message']['content']
+
+    raw = response["message"]["content"]
 
     try:
-        return json.loads(text)
+        return json.loads(raw)
     except json.JSONDecodeError:
-        print("❌ JSON 파싱 오류: LLM 출력 = ", text)
+        print("❌ JSON 파싱 실패:", raw)
         return None
 
 
-# ------------------------------------------
-# 4) JSON 행동 계획 실행 → Selenium 제어
-# ------------------------------------------
+# -----------------------------------------------------
+# 4) LLM action JSON 실행
+# -----------------------------------------------------
 def execute_action(driver, action_json):
     action = action_json.get("action")
     selector = action_json.get("selector")
@@ -87,27 +112,26 @@ def execute_action(driver, action_json):
         print("❌ 실행 오류:", e)
 
 
-# ------------------------------------------
-# 5) 메인 루프
-# ------------------------------------------
+# -----------------------------------------------------
+# 5) 메인 실행 루프
+# -----------------------------------------------------
 def main():
     driver = init_browser()
-
-    print("\n=== 🔥 LLM Chrome Controller 시작 ===\n")
-    print("예: 구글에서 '강아지 사진' 검색해줘\n")
+    print("\n🔥 LLM + HTML 분석 기반 Chrome Controller 시작\n")
 
     while True:
-        user_cmd = input("\n➡ 명령 입력: ")
+        cmd = input("\n➡ 명령 입력 (exit 종료): ")
 
-        if user_cmd.lower() in ["exit", "quit"]:
-            print("종료합니다.")
+        if cmd.lower() == "exit":
             break
 
-        plan = ask_llm(user_cmd)
+        html = driver.page_source  # ← ✨ HTML 전체를 LLM에게 보내줌
 
-        if plan:
-            print("\n📌 LLM 행동 계획:", plan)
-            execute_action(driver, plan)
+        action = ask_llm(cmd, html)
+
+        if action:
+            print("📌 LLM Action:", action)
+            execute_action(driver, action)
 
 
 if __name__ == "__main__":
