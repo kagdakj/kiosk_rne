@@ -475,6 +475,43 @@
             display: none;
         }
 
+        /* ===== 카메라 오버레이 ===== */
+        .cam-overlay {
+            position: fixed;
+            right: 20px;
+            top: 100px;
+            width: 240px;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: var(--border-radius);
+            padding: 10px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .cam-overlay video {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            background: #000;
+        }
+
+        .cam-overlay canvas {
+            display: none;
+        }
+
+        .cam-overlay .note {
+            color: #ddd;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        .cam-hidden {
+            display: none !important;
+        }
+
         /* ===== n8n 응답 표시 ===== */
         .n8n-response {
             position: fixed;
@@ -532,6 +569,13 @@
     <!-- 카메라 상태 -->
     <div class="camera-status hidden" id="cameraStatus">
         📷 카메라 대기 중
+    </div>
+
+    <!-- 카메라 오버레이 (복원) -->
+    <div id="camOverlay" class="cam-overlay cam-hidden">
+        <video id="camVideo" autoplay muted playsinline></video>
+        <canvas id="camCanvas"></canvas>
+        <div class="note" id="camStatusText">카메라: 비활성</div>
     </div>
 
     <!-- n8n 응답 표시 -->
