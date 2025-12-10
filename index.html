@@ -474,6 +474,41 @@
         .camera-status.hidden {
             display: none;
         }
+
+        /* ===== n8n 응답 표시 ===== */
+        .n8n-response {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            padding: calc(var(--gap) * 1.2) calc(var(--gap) * 1.5);
+            border-radius: var(--border-radius);
+            font-size: calc(var(--font-size) * 1.1);
+            font-weight: 700;
+            z-index: 3000;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            text-align: center;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        .n8n-response.hidden {
+            display: none;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateX(-50%) translateY(20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(-50%) translateY(0);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 
@@ -497,6 +532,11 @@
     <!-- 카메라 상태 -->
     <div class="camera-status hidden" id="cameraStatus">
         📷 카메라 대기 중
+    </div>
+
+    <!-- n8n 응답 표시 -->
+    <div class="n8n-response hidden" id="n8nResponse">
+        <div id="n8nResponseText"></div>
     </div>
 
     <!-- 메인 컨텐츠 -->
