@@ -1,0 +1,43 @@
+// AI Kiosk System Architecture
+digraph {
+	rankdir=LR
+	node [fontname="Malgun Gothic"]
+	subgraph cluster_client {
+		label="Client (Raspberry Pi / Kiosk)"
+		color="#f0f0f0" style=filled
+		fontsize=20
+		User [label="사용자 (User)" fillcolor=white shape=circle style=filled]
+		Cam [label="카메라 (Camera)" fillcolor="#e1bee7" shape=box style=filled]
+		Mic [label="마이크 (Mic)" fillcolor="#e1bee7" shape=box style=filled]
+		HTML [label="index.html
+(Main UI)" fillcolor="#fff9c4" shape=note style=filled]
+		AgeJS [label="age_detection.js
+(Face API)" fillcolor="#bbdefb" shape=component style=filled]
+		VoiceJS [label="voice_recognition.js
+(Audio Recorder)" fillcolor="#bbdefb" shape=component style=filled]
+		User -> Cam [label="얼굴 노출"]
+		User -> Mic [label="음성 명령"]
+		Cam -> AgeJS [label="Video Stream"]
+		Mic -> VoiceJS [label="Audio Stream"]
+		AgeJS -> HTML [label="UI 변경 (연령별)" color=blue]
+		VoiceJS -> HTML [label="UI 제어 (주문/장바구니)" color=blue]
+	}
+	subgraph cluster_server {
+		label="Server / Cloud (n8n & AI)"
+		color="#e0f7fa" style=filled
+		fontsize=20
+		n8n [label="n8n Workflow
+(Webhook)" fillcolor="#ffccbc" shape=box3d style=filled]
+		Whisper [label="OpenAI Whisper
+(STT)" fillcolor=white shape=ellipse style=filled]
+		LLM [label="LLM (GPT/Claude)
+(Intent Analysis)" fillcolor=white shape=ellipse style=filled]
+		n8n -> Whisper [label="Audio File"]
+		Whisper -> LLM [label="Converted Text"]
+		LLM -> n8n [label="JSON Action"]
+	}
+	VoiceJS -> n8n [label="HTTPS POST
+(Audio Blob)" color=red penwidth=2.0 style=dashed]
+	n8n -> VoiceJS [label="Response
+(JSON)" color=green penwidth=2.0 style=dashed]
+}
