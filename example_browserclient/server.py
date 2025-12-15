@@ -135,7 +135,7 @@ if __name__ == '__main__':
         recorder_ready.wait()
 
         print("Server started. Press Ctrl+C to stop the server.")
-        async with websockets.serve(echo, "localhost", 8001):
+        async with websockets.serve(echo, "0.0.0.0", 8001):
             try:
                 await asyncio.Future()  # run forever
             except asyncio.CancelledError:
