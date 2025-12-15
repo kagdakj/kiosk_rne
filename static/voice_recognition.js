@@ -1,130 +1,293 @@
-/* ===== AI 음성 제어 (Audio Recording Version for Raspberry Pi) ===== */
-// 웹훅 URL 설정 (n8n에서 "Binary Data"를 받는 Webhook으로 변경 필요)
+/* ===== AI 음성 제어 (Realtime WebSocket Streaming) ===== */
+const WS_URL = 'ws://localhost:8001';
 const WEBHOOK_URL = 'http://kagdakj.us.to:5678/webhook/da8e655c-86da-4261-87bb-dadbea77dc0a';
+
+const SERVER_CHECK_INTERVAL = 5000;
+const MAX_SENTENCE_HISTORY = 5;
 
 const $voiceBtn = document.getElementById('voiceBtn');
 const $voiceStatus = document.getElementById('voiceStatus');
 const $voiceStatusText = document.getElementById('voiceStatusText');
 
-let mediaRecorder = null;
-let audioChunks = [];
-let isRecording = false;
+let socket = null;
+let serverAvailable = false;
+let micAvailable = false;
+let shouldStream = true;
+let audioContext = null;
+let micSource = null;
+let processor = null;
+let mediaStream = null;
+let micInitializing = false;
+let fullSentences = [];
+let realtimeText = '';
+let lastSentSentence = '';
 
-// 녹음 시작
-async function startRecording() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
+function initRealtimeVoice() {
+    if (!$voiceStatus || !$voiceStatusText) return;
 
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                audioChunks.push(event.data);
-            }
-        };
+    showVoiceStatus('🎤 실시간 음성을 준비하는 중입니다...');
+    connectToServer();
+    startMicStream();
 
-        mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // Chromium은 webm 지원
-            sendAudioToWebhook(audioBlob);
+    setInterval(() => {
+        if (!shouldStream) return;
+        if (!socket || socket.readyState === WebSocket.CLOSED) {
+            connectToServer(true);
+        }
+    }, SERVER_CHECK_INTERVAL);
 
-            // 스트림 트랙 중지 (마이크 끄기)
-            stream.getTracks().forEach(track => track.stop());
-        };
-
-        mediaRecorder.start();
-        isRecording = true;
-
-        // UI 업데이트
-        $voiceBtn.classList.add('recording');
-        $voiceStatus.classList.remove('hidden');
-        $voiceStatusText.textContent = '🎤 듣고 있습니다... (클릭하여 종료)';
-
-    } catch (error) {
-        console.error('마이크 접근 오류:', error);
-        alert('마이크 권한이 필요합니다. HTTPS 환경인지 확인하세요.\n라즈베리파이: localhost 또는 HTTPS 필수');
+    if ($voiceBtn) {
+        $voiceBtn.title = '연결이 끊기면 클릭해서 음성 채널을 재시작하세요.';
+        $voiceBtn.addEventListener('click', () => {
+            restartStreaming();
+        });
     }
+
+    window.addEventListener('beforeunload', () => {
+        stopStreaming(true);
+    });
 }
 
-// 녹음 중지
-function stopRecording() {
-    if (mediaRecorder && isRecording) {
-        mediaRecorder.stop();
-        isRecording = false;
-
-        // UI 업데이트
-        $voiceBtn.classList.remove('recording');
-        $voiceStatusText.textContent = '⏳ 서버 전송 중...';
-    }
-}
-
-// 웹훅으로 오디오 전송
-async function sendAudioToWebhook(audioBlob) {
-    if (!WEBHOOK_URL) {
-        console.warn('웹훅 URL이 설정되지 않았습니다');
+function connectToServer(force = false) {
+    if (!shouldStream) return;
+    if (!force && socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
         return;
     }
 
     try {
-        const formData = new FormData();
-        formData.append('file', audioBlob, 'voice_command.webm');
+        socket = new WebSocket(WS_URL);
+    } catch (err) {
+        console.error('STT 서버 소켓 생성 실패:', err);
+        serverAvailable = false;
+        showVoiceStatus();
+        return;
+    }
 
-        console.log('오디오 전송 시작:', audioBlob.size, 'bytes');
-        $voiceStatusText.textContent = '⏳ AI 처리 중...';
+    socket.onopen = () => {
+        serverAvailable = true;
+        showVoiceStatus();
+    };
 
-        const response = await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            body: formData
-        });
+    socket.onclose = () => {
+        serverAvailable = false;
+        socket = null;
+        showVoiceStatus();
+    };
 
-        if (response.ok) {
-            console.log('✅ 서버 응답 수신');
-            try {
-                const jsonResponse = await response.json();
-                console.log('AI 응답:', jsonResponse);
+    socket.onerror = (err) => {
+        console.error('STT 소켓 오류:', err);
+    };
 
-                $voiceStatusText.textContent = '✓ 처리 완료';
+    socket.onmessage = handleSocketMessage;
+}
 
-                // AI 응답 처리
-                handleAIResponse(jsonResponse);
+async function startMicStream(force = false) {
+    if (!shouldStream || micInitializing) return;
+    if (!force && micAvailable && processor) return;
 
-                setTimeout(() => {
-                    $voiceStatus.classList.add('hidden');
-                }, 3000);
-            } catch (e) {
-                console.error('JSON 파싱 오류:', e);
-                $voiceStatusText.textContent = '⚠️ 응답 형식 오류';
-            }
-        } else {
-            throw new Error(`서버 응답 오류: ${response.status}`);
+    micInitializing = true;
+
+    try {
+        if (!mediaStream || force) {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
-    } catch (error) {
-        console.error('전송 실패:', error);
-        $voiceStatusText.textContent = `❌ 오류: ${error.message}`;
-        setTimeout(() => $voiceStatus.classList.add('hidden'), 3000);
+
+        if (!audioContext || audioContext.state === 'closed') {
+            audioContext = new AudioContext();
+        } else if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
+
+        releaseMicNodes();
+
+        micSource = audioContext.createMediaStreamSource(mediaStream);
+        processor = audioContext.createScriptProcessor(1024, 1, 1);
+        processor.onaudioprocess = handleAudioProcess;
+        micSource.connect(processor);
+        processor.connect(audioContext.destination);
+
+        micAvailable = true;
+        showVoiceStatus();
+    } catch (err) {
+        micAvailable = false;
+        console.error('마이크 초기화 실패:', err);
+        showVoiceStatus('🎤 마이크 권한이 필요합니다. 허용 후 페이지를 새로고침하세요.');
+    } finally {
+        micInitializing = false;
     }
 }
 
-// AI 응답 처리
+function handleAudioProcess(event) {
+    if (!shouldStream || !socket || socket.readyState !== WebSocket.OPEN) return;
+    const inputData = event.inputBuffer.getChannelData(0);
+    const pcmBuffer = new Int16Array(inputData.length);
+
+    for (let i = 0; i < inputData.length; i++) {
+        let s = inputData[i] * 32768;
+        s = Math.max(-32768, Math.min(32767, s));
+        pcmBuffer[i] = s;
+    }
+
+    const metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
+    const metadataBytes = new TextEncoder().encode(metadata);
+    const metadataLength = new ArrayBuffer(4);
+    new DataView(metadataLength).setUint32(0, metadataBytes.byteLength, true);
+
+    const packet = new Blob([metadataLength, metadataBytes, pcmBuffer.buffer]);
+    socket.send(packet);
+}
+
+function handleSocketMessage(event) {
+    if (typeof event.data !== 'string') return;
+
+    try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'realtime') {
+            realtimeText = data.text || '';
+            showVoiceStatus();
+        } else if (data.type === 'fullSentence') {
+            const text = (data.text || '').trim();
+            if (!text) return;
+            realtimeText = '';
+            fullSentences.push(text);
+            if (fullSentences.length > MAX_SENTENCE_HISTORY) fullSentences.shift();
+            showVoiceStatus();
+
+            if (text !== lastSentSentence) {
+                lastSentSentence = text;
+                sendTranscriptToWebhook(text);
+            }
+        }
+    } catch (err) {
+        console.error('STT 메시지 파싱 실패:', err);
+    }
+}
+
+async function sendTranscriptToWebhook(text) {
+    if (!WEBHOOK_URL) return;
+    showVoiceStatus(`🛰 "${text}" 전송 중...`);
+
+    try {
+        const payload = {
+            text,
+            timestamp: new Date().toISOString(),
+            language: 'ko-KR'
+        };
+
+        const response = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            throw new Error(`웹훅 응답 오류 (${response.status})`);
+        }
+
+        const result = await response.json().catch(() => null);
+        if (result) {
+            handleAIResponse(result);
+        }
+
+        showVoiceStatus(`✓ "${text}" 처리 완료`);
+        setTimeout(() => showVoiceStatus(), 1200);
+    } catch (err) {
+        console.error('웹훅 전송 실패:', err);
+        showVoiceStatus(`❌ 웹훅 오류: ${err.message}`);
+        setTimeout(() => showVoiceStatus(), 2000);
+    }
+}
+
+async function restartStreaming() {
+    showVoiceStatus('🔄 음성 채널을 재시작합니다...');
+    await stopStreaming();
+    shouldStream = true;
+    connectToServer(true);
+    startMicStream(true);
+}
+
+async function stopStreaming(fullStop = false) {
+    if (socket) {
+        try { socket.close(); } catch (e) { }
+        socket = null;
+    }
+    serverAvailable = false;
+
+    releaseMicNodes(fullStop);
+
+    if (fullStop) {
+        shouldStream = false;
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
+        }
+        micAvailable = false;
+        if (audioContext) {
+            try { await audioContext.close(); } catch (e) { }
+            audioContext = null;
+        }
+    }
+}
+
+function releaseMicNodes(stopTracks = false) {
+    if (processor) {
+        processor.disconnect();
+        processor.onaudioprocess = null;
+        processor = null;
+    }
+    if (micSource) {
+        micSource.disconnect();
+        micSource = null;
+    }
+    if (stopTracks && mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+        micAvailable = false;
+    }
+}
+
+function showVoiceStatus(message) {
+    if (!$voiceStatusText || !$voiceStatus) return;
+    $voiceStatus.classList.remove('hidden');
+
+    if ($voiceBtn) {
+        $voiceBtn.classList.toggle('recording', micAvailable && serverAvailable);
+    }
+
+    if (message) {
+        $voiceStatusText.textContent = message;
+        return;
+    }
+
+    if (!micAvailable) {
+        $voiceStatusText.textContent = '🎤 마이크 권한을 허용해주세요.';
+        return;
+    }
+    if (!serverAvailable) {
+        $voiceStatusText.textContent = '🖥️ 실시간 음성 서버 연결을 대기 중입니다...';
+        return;
+    }
+
+    const transcript = [...fullSentences, realtimeText].filter(Boolean).join(' ').trim();
+    $voiceStatusText.textContent = transcript || '👄 말씀해 주세요...';
+}
+
+// AI 응답 처리 이하 기존 로직 유지
 function handleAIResponse(aiResponse) {
     const $n8nResponse = document.getElementById('n8nResponse');
     const $n8nResponseText = document.getElementById('n8nResponseText');
 
-    // 1. 텍스트 응답 표시
-    if (aiResponse.message) {
-        if ($n8nResponseText && $n8nResponse) {
-            $n8nResponseText.textContent = aiResponse.message;
-            $n8nResponse.classList.remove('hidden');
-            setTimeout(() => $n8nResponse.classList.add('hidden'), 5000);
-        }
+    if (aiResponse.message && $n8nResponseText && $n8nResponse) {
+        $n8nResponseText.textContent = aiResponse.message;
+        $n8nResponse.classList.remove('hidden');
+        setTimeout(() => $n8nResponse.classList.add('hidden'), 5000);
     }
 
-    // 2. 액션 실행
     if (aiResponse.action) {
         executeAction(aiResponse.action, aiResponse.params || {});
     }
 }
 
-// 액션 실행기
 function executeAction(action, params) {
     console.log('액션 실행:', action, params);
     try {
@@ -158,49 +321,41 @@ function executeAction(action, params) {
     }
 }
 
-// --- 액션 핸들러들 ---
-
-// 장바구니에 추가
 function handleAddToCart(params) {
-    if (!params.name) return;
-    if (typeof PRODUCTS === 'undefined') return;
+    if (!params || !params.name || typeof PRODUCTS === 'undefined') return;
 
     const product = PRODUCTS.find(p =>
         p.name.toLowerCase().includes(params.name.toLowerCase()) ||
         params.name.toLowerCase().includes(p.name.toLowerCase())
     );
 
-    if (product) {
-        // 옵션 매핑
-        const mapSize = (v) => ({ 's': 'S', 'm': 'M', 'l': 'L' }[String(v).toLowerCase()] || 'M');
-        const mapSweet = (v) => ({ '0': '0', '1': '50', '2': '100' }[String(v)] || '50');
-        const mapIce = (v) => ({ '0': 'less', '1': 'normal', '2': 'more' }[String(v)] || 'normal');
+    if (!product || typeof cart === 'undefined') return;
 
-        const options = {
-            size: mapSize(params.size),
-            sweet: mapSweet(params.sweet),
-            ice: mapIce(params.ice)
-        };
+    const mapSize = (v) => ({ 's': 'S', 'm': 'M', 'l': 'L' }[String(v).toLowerCase()] || 'M');
+    const mapSweet = (v) => ({ '0': '0', '1': '50', '2': '100' }[String(v)] || '50');
+    const mapIce = (v) => ({ '0': 'less', '1': 'normal', '2': 'more' }[String(v)] || 'normal');
 
-        const qty = params.quantity || 1;
+    const options = {
+        size: mapSize(params.size),
+        sweet: mapSweet(params.sweet),
+        ice: mapIce(params.ice)
+    };
 
-        if (typeof cart !== 'undefined') {
-            for (let i = 0; i < qty; i++) {
-                const key = `${product.id}-${options.size}-${options.sweet}-${options.ice}`;
-                const existing = cart.find(it => `${it.id}-${it.size}-${it.sweet}-${it.ice}` === key);
-                if (existing) existing.qty++;
-                else cart.push({ ...product, ...options, qty: 1 });
-            }
-            if (typeof renderCart === 'function') renderCart();
-        }
+    const qty = params.quantity || 1;
+    for (let i = 0; i < qty; i++) {
+        const key = `${product.id}-${options.size}-${options.sweet}-${options.ice}`;
+        const existing = cart.find(it => `${it.id}-${it.size}-${it.sweet}-${it.ice}` === key);
+        if (existing) existing.qty += 1;
+        else cart.push({ ...product, ...options, qty: 1 });
     }
+
+    if (typeof renderCart === 'function') renderCart();
 }
 
 function handleClearCart() {
-    if (typeof cart !== 'undefined') {
-        cart.length = 0;
-        if (typeof renderCart === 'function') renderCart();
-    }
+    if (typeof cart === 'undefined') return;
+    cart.length = 0;
+    if (typeof renderCart === 'function') renderCart();
 }
 
 function handlePlaceOrder() {
@@ -216,28 +371,22 @@ function handleSelectCategory(category) {
 }
 
 function handleShowMenu(menuName) {
-    if (typeof PRODUCTS === 'undefined') return;
+    if (typeof PRODUCTS === 'undefined' || typeof selectMenu !== 'function') return;
     const product = PRODUCTS.find(p => p.name.includes(menuName));
-    if (product && typeof selectMenu === 'function') selectMenu(product.id);
+    if (product) selectMenu(product.id);
 }
 
 function handleRemoveFromCart(menuName) {
-    if (typeof cart !== 'undefined') {
-        const idx = cart.findIndex(item => item.name.includes(menuName));
-        if (idx !== -1) {
-            cart.splice(idx, 1);
-            if (typeof renderCart === 'function') renderCart();
-        }
+    if (typeof cart === 'undefined') return;
+    const idx = cart.findIndex(item => item.name.includes(menuName));
+    if (idx !== -1) {
+        cart.splice(idx, 1);
+        if (typeof renderCart === 'function') renderCart();
     }
 }
 
-// 버튼 이벤트 리스너
-if ($voiceBtn) {
-    $voiceBtn.addEventListener('click', () => {
-        if (isRecording) {
-            stopRecording();
-        } else {
-            startRecording();
-        }
-    });
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initRealtimeVoice);
+} else {
+    initRealtimeVoice();
 }
