@@ -1,5 +1,5 @@
 /* ===== AI 음성 제어 (Realtime WebSocket Streaming) ===== */
-const WS_URL = 'ws://localhost-0.tailc0f27e.ts.net:8001';
+const WS_URL = 'ws://localhost-0.tailc0f27e.ts.net';
 const WEBHOOK_URL = 'http://kagdakj.us.to:5678/webhook/da8e655c-86da-4261-87bb-dadbea77dc0a';
 
 const SERVER_CHECK_INTERVAL = 5000;
