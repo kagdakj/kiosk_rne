@@ -3,7 +3,6 @@ const WS_URL = 'ws://localhost:8001';
 const WEBHOOK_URL = 'http://kagdakj.us.to:5678/webhook/da8e655c-86da-4261-87bb-dadbea77dc0a';
 
 const SERVER_CHECK_INTERVAL = 5000;
-const MAX_SENTENCE_HISTORY = 5;
 
 const $voiceBtn = document.getElementById('voiceBtn');
 const $voiceStatus = document.getElementById('voiceStatus');
@@ -18,7 +17,7 @@ let micSource = null;
 let processor = null;
 let mediaStream = null;
 let micInitializing = false;
-let fullSentences = [];
+let pendingSentences = [];
 let realtimeText = '';
 let lastSentSentence = '';
 
@@ -149,27 +148,30 @@ function handleSocketMessage(event) {
             const text = (data.text || '').trim();
             if (!text) return;
             realtimeText = '';
-            fullSentences.push(text);
-            if (fullSentences.length > MAX_SENTENCE_HISTORY) fullSentences.shift();
-            showVoiceStatus();
-
-            if (text !== lastSentSentence) {
-                lastSentSentence = text;
-                sendTranscriptToWebhook(text);
-            }
+            enqueueSentence(text);
         }
     } catch (err) {
         console.error('STT 메시지 파싱 실패:', err);
     }
 }
 
-async function sendTranscriptToWebhook(text) {
+function enqueueSentence(text) {
+    if (text === lastSentSentence) return;
+    lastSentSentence = text;
+
+    const item = { id: Date.now() + Math.random(), text };
+    pendingSentences.push(item);
+    showVoiceStatus();
+    sendTranscriptToWebhook(item);
+}
+
+async function sendTranscriptToWebhook(sentence) {
     if (!WEBHOOK_URL) return;
-    showVoiceStatus(`🛰 "${text}" 전송 중...`);
+    showVoiceStatus(`🛰 "${sentence.text}" 전송 중...`);
 
     try {
         const payload = {
-            text,
+            text: sentence.text,
             timestamp: new Date().toISOString(),
             language: 'ko-KR'
         };
@@ -189,13 +191,22 @@ async function sendTranscriptToWebhook(text) {
             handleAIResponse(result);
         }
 
-        showVoiceStatus(`✓ "${text}" 처리 완료`);
+        removeSentence(sentence.id);
+        showVoiceStatus(`✓ "${sentence.text}" 처리 완료`);
         setTimeout(() => showVoiceStatus(), 1200);
     } catch (err) {
         console.error('웹훅 전송 실패:', err);
         showVoiceStatus(`❌ 웹훅 오류: ${err.message}`);
         setTimeout(() => showVoiceStatus(), 2000);
     }
+}
+
+function removeSentence(id) {
+    pendingSentences = pendingSentences.filter(item => item.id !== id);
+    if (!pendingSentences.length) {
+        lastSentSentence = '';
+    }
+    showVoiceStatus();
 }
 
 async function restartStreaming() {
@@ -268,7 +279,7 @@ function showVoiceStatus(message) {
         return;
     }
 
-    const transcript = [...fullSentences, realtimeText].filter(Boolean).join(' ').trim();
+    const transcript = [...pendingSentences.map(s => s.text), realtimeText].filter(Boolean).join(' ').trim();
     $voiceStatusText.textContent = transcript || '👄 말씀해 주세요...';
 }
 
