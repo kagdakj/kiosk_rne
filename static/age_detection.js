@@ -1,4 +1,3 @@
-/* ===== 카메라 자동 연령 감지 기능 (복원됨) ===== */
 (function () {
     // face-api.js CDN이 로드되었는지 확인
     const faceapiAvailable = typeof faceapi !== 'undefined';

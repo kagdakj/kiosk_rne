@@ -4,7 +4,6 @@ app = Flask(__name__, static_folder="static")
 
 @app.route('/<path:path>')
 def send_report(path):
-    # Using request args for path will expose you to directory traversal attacks
     return send_from_directory('static', path)
 
 @app.route('/')

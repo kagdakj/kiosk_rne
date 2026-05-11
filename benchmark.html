@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 연령 인식 벤치마크</title>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script defer src="/static/age_detection.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #1a73e8;
+        }
+
+        .btn {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn.stop {
+            background: #f44336;
+        }
+
+        #progress {
+            width: 100%;
+            height: 20px;
+            background: #ddd;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        #bar {
+            height: 100%;
+            background: #4caf50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .stat-box {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #1a73e8;
+        }
+
+        .small-text {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .error {
+            color: #d32f2f;
+            padding: 10px;
+            background: #ffebee;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .item {
+            background: #fff;
+            padding: 8px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #ddd;
+            overflow: hidden;
+        }
+
+        .item.correct {
+            border-color: #4caf50;
+            background: #e8f5e9;
+        }
+
+        .item.wrong {
+            border-color: #f44336;
+            background: #ffebee;
+        }
+
+        .item img {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .item-info {
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        #statusText {
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h1>📊 AI 연령 인식 벤치마크 - Dataset</h1>
+        <p>dataset 폴더의 이미지를 분석하여 모델의 정확도를 측정합니다.</p>
+
+        <div id="errorMsg" class="error" style="display:none;"></div>
+
+        <div style="margin: 20px 0;">
+            <button id="startBtn" class="btn" onclick="startBenchmark()">🚀 테스트 시작</button>
+            <button id="stopBtn" class="btn stop" onclick="stopBenchmark()" disabled style="display:none;">⏹️ 중지</button>
+            <button id="downloadBtn" class="btn" onclick="downloadCSV()" disabled style="background:#4caf50;">💾 결과 다운로드 (CSV)</button>
+        </div>
+
+        <div id="progress">
+            <div id="bar"></div>
+        </div>
+        <div id="statusText">준비 완료. 테스트를 시작하세요.</div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>정확도</h3>
+                <div id="accuracy" class="stat-box">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>평균 오차 (MAE)</h3>
+                <div id="mae" class="stat-box">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>처리된 이미지</h3>
+                <div id="processedCount" class="stat-box">0</div>
+            </div>
+        </div>
+
+        <h3>📋 상세 결과</h3>
+        <div id="resultGrid" class="grid"></div>
+    </div>
+
+    <script>
+        let results = [];
+        let isBenchmarking = false;
+
+        function showError(msg) {
+            document.getElementById('errorMsg').innerText = msg;
+            document.getElementById('errorMsg').style.display = 'block';
+        }
+
+        function updateStatus(msg) {
+            document.getElementById('statusText').innerText = msg;
+        }
+
+        async function startBenchmark() {
+            if (typeof faceapi === 'undefined') {
+                showError('❌ face-api.js가 로드되지 않았습니다.');
+                return;
+            }
+
+            if (typeof initAgeDetection === 'undefined') {
+                showError('❌ age_detection.js가 로드되지 않았습니다.');
+                return;
+            }
+
+            isBenchmarking = true;
+            results = [];
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('downloadBtn').disabled = true;
+            document.getElementById('resultGrid').innerHTML = '';
+            document.getElementById('errorMsg').style.display = 'none';
+
+            try {
+                updateStatus('모델 초기화 중...');
+                await initAgeDetection();
+
+                updateStatus('Dataset 폴더 스캔 중...');
+                const res = await fetch('http://localhost:5001/api/dataset');
+                const data = await res.json();
+
+                if (data.error) {
+                    showError('❌ ' + data.error);
+                    return;
+                }
+
+                if (!data.images || data.images.length === 0) {
+                    showError('❌ Dataset 폴더에 이미지가 없습니다.');
+                    return;
+                }
+
+                const images = data.images;
+                const total = images.length;
+                let correctCount = 0;
+                let maeSum = 0;
+
+                updateStatus(`총 ${total}개 이미지 발견. 처리 시작...`);
+
+                for (let i = 0; i < total && isBenchmarking; i++) {
+                    const image = images[i];
+                    const progress = ((i + 1) / total) * 100;
+                    
+                    document.getElementById('bar').style.width = progress + '%';
+                    updateStatus(`처리 중: ${i + 1} / ${total} (${image.filename})`);
+
+                    try {
+                        const img = new Image();
+                        img.crossOrigin = "anonymous";
+                        
+                        // 이미지 URL을 localhost:5001로 정확히 지정
+                        const imageUrl = 'http://localhost:5001' + image.url;
+                        
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = () => reject(new Error(`이미지 로드 실패: ${imageUrl}`));
+                            img.src = imageUrl;
+                        });
+
+                        const detection = await detectAge(img);
+
+                        if (detection && detection.age !== undefined) {
+                            const predictedAge = Math.round(detection.age);
+                            const actualAge = image.age;
+                            const diff = Math.abs(predictedAge - actualAge);
+                            const isCorrect = diff <= 3;
+
+                            if (isCorrect) correctCount++;
+                            maeSum += diff;
+
+                            results.push({
+                                filename: image.filename,
+                                actualAge: actualAge,
+                                predictedAge: predictedAge,
+                                diff: diff,
+                                isCorrect: isCorrect,
+                                imageUrl: imageUrl
+                            });
+
+                            addResultItem(imageUrl, actualAge, predictedAge, isCorrect);
+                            updateStats(correctCount, maeSum, i + 1);
+                            console.log(`✅ ${image.filename}: 실제 ${actualAge}세, 예측 ${predictedAge}세`);
+                        } else {
+                            results.push({
+                                filename: image.filename,
+                                actualAge: actualAge,
+                                predictedAge: -1,
+                                isCorrect: false,
+                                note: "얼굴 미감지"
+                            });
+                            console.warn(`⚠️ ${image.filename}: 얼굴 미감지`);
+                        }
+                    } catch (e) {
+                        console.error('이미지 처리 오류:', image.filename, e);
+                        results.push({
+                            filename: image.filename,
+                            actualAge: image.age,
+                            isCorrect: false,
+                            note: "처리 오류: " + e.message
+                        });
+                    }
+
+                    await new Promise(r => setTimeout(r, 100));
+                }
+
+                if (isBenchmarking) {
+                    updateStatus(`✅ 완료! ${correctCount}/${results.length} 정확`);
+                    document.getElementById('downloadBtn').disabled = false;
+                }
+            } catch (e) {
+                console.error(e);
+                showError('❌ 오류 발생: ' + e.message);
+            } finally {
+                isBenchmarking = false;
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+                document.getElementById('stopBtn').style.display = 'none';
+            }
+        }
+
+        function stopBenchmark() {
+            isBenchmarking = false;
+            updateStatus('⏹️ 중지됨');
+        }
+
+        function addResultItem(imageUrl, actualAge, predictedAge, isCorrect) {
+            const div = document.createElement('div');
+            div.className = `item ${isCorrect ? 'correct' : 'wrong'}`;
+            div.innerHTML = `
+                <img src="${imageUrl}" onerror="this.style.display='none'">
+                <div class="item-info">
+                    <div><strong>실제:</strong> ${actualAge}세</div>
+                    <div><strong>예측:</strong> ${predictedAge}세</div>
+                </div>
+            `;
+            document.getElementById('resultGrid').appendChild(div);
+        }
+
+        function updateStats(correctCount, maeSum, total) {
+            document.getElementById('processedCount').innerText = total;
+            
+            if (total > 0) {
+                const accuracy = ((correctCount / total) * 100).toFixed(1);
+                document.getElementById('accuracy').innerText = accuracy + '%';
+                
+                const mae = (maeSum / total).toFixed(2);
+                document.getElementById('mae').innerText = mae + '세';
+            }
+        }
+
+        function downloadCSV() {
+            if (results.length === 0) {
+                alert('결과가 없습니다.');
+                return;
+            }
+
+            let csv = "파일명,실제나이,예측나이,오차,정답여부\n";
+            results.forEach(r => {
+                const predictedAge = r.predictedAge >= 0 ? r.predictedAge : -1;
+                const diff = r.diff !== undefined ? r.diff : '-';
+                csv += `"${r.filename}",${r.actualAge},${predictedAge},${diff},${r.isCorrect}\n`;
+            });
+
+            const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `benchmark_results_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
+        }
+
+        window.addEventListener('load', function() {
+            console.log('✅ face-api 로드됨:', typeof faceapi !== 'undefined');
+            console.log('✅ age_detection 로드됨:', typeof initAgeDetection !== 'undefined');
+        });
+    </script>
+</body>
+
+</html>
