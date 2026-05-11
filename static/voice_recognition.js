@@ -115,14 +115,23 @@ async function sendToAI(text) {
         };
 
         console.log('📤 AI에게 전송:', payload);
+        console.log('🔗 웹훅 URL:', WEBHOOK_URL);
+        console.log('🌐 네트워크 상태:', navigator.onLine ? '온라인' : '오프라인');
+
+        // 타임아웃 설정 (10초)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         const response = await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (response.ok) {
             console.log('✅ AI 응답 수신');
@@ -151,12 +160,60 @@ async function sendToAI(text) {
                 console.error('❌ AI 응답 처리 오류:', error);
             }
         } else {
-            console.error('❌ AI 전송 실패:', response.status);
-            if ($voiceStatusText) $voiceStatusText.textContent = `❌ 전송 실패 (${response.status})`;
+            console.error('❌ AI 전송 실패:', response.status, response.statusText);
+            if ($voiceStatusText) $voiceStatusText.textContent = `❌ 전송 실패 (${response.status} ${response.statusText})`;
         }
     } catch (error) {
-        console.error('❌ 네트워크 오류:', error);
-        if ($voiceStatusText) $voiceStatusText.textContent = `❌ 전송 오류: ${error.message}`;
+        console.error('❌ fetch 오류 타입:', error.name);
+        console.error('❌ 상세 오류:', error.message);
+        
+        let errorMsg = `❌ 전송 오류: ${error.message}`;
+        
+        // CORS 문제 감지
+        if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+            console.warn('⚠️ CORS 문제 또는 네트워크 차단 가능성');
+            errorMsg = '❌ 서버 연결 불가 (CORS/네트워크 문제)';
+        }
+        
+        // 타임아웃 감지
+        if (error.name === 'AbortError') {
+            console.warn('⚠️ 요청 타임아웃 (10초)');
+            errorMsg = '❌ 서버 응답 없음 (타임아웃)';
+        }
+        
+        if ($voiceStatusText) $voiceStatusText.textContent = errorMsg;
+    }
+}
+
+// ===== 웹훅 연결 테스트 =====
+async function testWebhookConnection() {
+    console.log('🔍 웹훅 연결 테스트 시작...');
+    console.log('🔗 웹훅 URL:', WEBHOOK_URL);
+    
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(WEBHOOK_URL, {
+            method: 'OPTIONS',
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok || response.status === 405) {
+            console.log('✅ 웹훅 연결 성공');
+            return true;
+        } else {
+            console.warn('⚠️ 웹훅 응답:', response.status, response.statusText);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ 웹훅 연결 실패:', error.name, error.message);
+        if (error.name === 'AbortError') {
+            console.error('⚠️ 타임아웃: 웹훅 서버가 응답하지 않음');
+        }
+        return false;
     }
 }
 
@@ -399,3 +456,9 @@ if ($voiceBtn) {
         }
     });
 }
+
+// ===== 페이지 로드 시 웹훅 연결 테스트 =====
+window.addEventListener('load', () => {
+    console.log('📊 [voice_recognition] 초기화 시작');
+    testWebhookConnection();
+});
