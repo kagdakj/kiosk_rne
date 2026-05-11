@@ -1,7 +1,7 @@
 /* ===== AI 음성 제어 키오스크 (Web Speech API) ===== */
 
 // 웹훅 URL 설정
-const WEBHOOK_URL = 'https://n8n.risegbsh.dpdns.org/webhook/rne';
+const WEBHOOK_URL = 'http://kagdakj.us.to:5678/webhook/nugget';
 
 // DOM 요소 참조
 const $voiceBtn = document.getElementById('voiceBtn');
